@@ -15,6 +15,9 @@ struct LibraryView: View {
     @State private var loading = true
     @State private var showCats = false
     @State private var readingNow: [Chapter] = []
+    @State private var selecting = false
+    @State private var sel: Set<Int> = []
+    @State private var catManga: Manga?
 
     var list: [Manga] {
         var l = all.filter { cat < 0 || ($0.categories?.nodes.contains { $0.id == cat } ?? false) }
@@ -36,7 +39,7 @@ struct LibraryView: View {
                 if !readingNow.isEmpty && filter.isEmpty {
                     HStack(alignment: .firstTextBaseline) { Text("Continue reading").font(.headline); Text("recent history; greyed = not in your library").font(.caption2).foregroundStyle(.secondary) }.padding(.horizontal, 12)
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) { ForEach(readingNow) { c in ReadingNowCard(c: c) } }.padding(.horizontal, 12)
+                        HStack(spacing: 10) { ForEach(readingNow) { c in ReadingNowCard(c: c) { Task { await load() } } } }.padding(.horizontal, 12)
                     }
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -48,7 +51,11 @@ struct LibraryView: View {
                 if !error.isEmpty { ErrorBanner(text: error) }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding() }
                 else if list.isEmpty { Text(all.isEmpty ? "Your library is empty. Browse a source and tap “Add to library”." : "Nothing matches.").foregroundStyle(.secondary).padding() }
-                MangaGrid(mangas: list, device: device)
+                MangaGrid(mangas: list, device: device, selecting: selecting, sel: $sel, menu: { m in AnyView(Group {
+                    Button(role: .destructive) { Task { try? await api.setLibrary(m.id, false); await load() } } label: { Label("Remove from library", systemImage: "heart.slash") }
+                    Button { Task { cats = (try? await api.categories()) ?? cats; catManga = m } } label: { Label("Categories…", systemImage: "folder") }
+                    Button { selecting = true; sel = [m.id] } label: { Label("Select…", systemImage: "checkmark.circle") }
+                }) })
             }.padding(.vertical, 8)
         }
         .kumoDestinations()
@@ -59,6 +66,7 @@ struct LibraryView: View {
                 Menu {
                     Picker("Sort", selection: $sort) { Text("Title").tag("title"); Text("Unread").tag("unread"); Text("Latest chapter").tag("latest") }
                     Picker("Show", selection: $only) { Text("All").tag(""); Text("Unread").tag("unread"); Text("On server").tag("server"); Text("On this device").tag("device") }
+                    Button { selecting = true; sel.removeAll() } label: { Label("Select…", systemImage: "checkmark.circle") }
                     Button { showCats = true } label: { Label("Categories…", systemImage: "folder") }
                     Button { Task { try? await api.updateLibrary() } } label: { Label("Update library now", systemImage: "arrow.triangle.2.circlepath") }
                 } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
@@ -68,6 +76,19 @@ struct LibraryView: View {
         .refreshable { await load() }
         .task { await load() }
         .sheet(isPresented: $showCats) { CategoriesSheet(cats: cats) { Task { await load() } } }
+        .sheet(item: $catManga) { m in MangaCategoriesSheet(manga: m, cats: cats) { Task { await load() } } }
+        .safeAreaInset(edge: .bottom) {
+            if selecting {
+                HStack(spacing: 12) {
+                    Text("\(sel.count) selected").font(.footnote.bold())
+                    Spacer()
+                    Button(sel.count == list.count ? "None" : "All") { sel = sel.count == list.count ? [] : Set(list.map { $0.id }) }.font(.footnote)
+                    Button(role: .destructive) { let ids = sel; selecting = false; sel = []; Task { for id in ids { try? await api.setLibrary(id, false) }; await load() } } label: { Label("Remove", systemImage: "heart.slash") }.disabled(sel.isEmpty)
+                    Button("Done") { selecting = false; sel = [] }.bold()
+                }
+                .padding(.horizontal).padding(.vertical, 10).background(.bar)
+            }
+        }
     }
     func load() async {
         do { let (a, c, hist) = try await withRetry { async let a = api.library(); async let c = api.categories(); async let h = api.history(); return (try await a, try await c, try await h) }; all = a; cats = c
@@ -80,6 +101,7 @@ struct LibraryView: View {
 struct ReadingNowCard: View {
     @EnvironmentObject var api: API
     let c: Chapter
+    var changed: () -> Void = {}
     var body: some View {
         NavigationLink(value: ReaderTarget(manga: Manga(id: c.manga?.id ?? 0, title: c.manga?.title ?? "", thumbnailUrl: c.manga?.thumbnailUrl, inLibrary: true), chapters: [], chapterId: c.id)) {
             VStack(alignment: .leading, spacing: 4) {
@@ -89,6 +111,12 @@ struct ReadingNowCard: View {
                 ProgressView(value: c.pageCount > 0 ? Double(min(c.lastPageRead + 1, c.pageCount)) / Double(c.pageCount) : 0).tint(.accentColor)
             }.frame(width: 120)
         }.buttonStyle(.plain)
+        .contextMenu {
+            if let m = c.manga {
+                if m.inLibrary ?? true { Button(role: .destructive) { Task { try? await api.setLibrary(m.id, false); changed() } } label: { Label("Remove from library", systemImage: "heart.slash") } }
+                else { Button { Task { try? await api.setLibrary(m.id, true); changed() } } label: { Label("Add to library", systemImage: "heart") } }
+            }
+        }
     }
 }
 

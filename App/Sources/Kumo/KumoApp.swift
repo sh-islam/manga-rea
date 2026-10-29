@@ -102,14 +102,33 @@ struct Badge: View {
 struct MangaGrid: View {
     let mangas: [Manga]
     var device: DeviceStore? = nil
+    var selecting = false
+    var sel: Binding<Set<Int>>? = nil
+    var menu: ((Manga) -> AnyView)? = nil
     var onEnd: (() -> Void)? = nil
     private let cols = [GridItem(.adaptive(minimum: 105), spacing: 10)]
     var body: some View {
         LazyVGrid(columns: cols, spacing: 10) {
             ForEach(mangas) { m in
-                NavigationLink(value: m) { Cover(manga: m, badgeUnread: m.unreadCount, badgeDevice: device?.mangaCount(m.id)) }
-                    .buttonStyle(.plain)
-                    .onAppear { if m.id == mangas.last?.id { onEnd?() } }
+                Group {
+                    if selecting, let sel = sel {
+                        let on = sel.wrappedValue.contains(m.id)
+                        Button { if on { sel.wrappedValue.remove(m.id) } else { sel.wrappedValue.insert(m.id) } } label: {
+                            Cover(manga: m, badgeUnread: m.unreadCount, badgeDevice: device?.mangaCount(m.id))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(on ? Color.accentColor : .clear, lineWidth: 3))
+                                .overlay(alignment: .topTrailing) {
+                                    Image(systemName: on ? "checkmark.circle.fill" : "circle").font(.title2).foregroundStyle(on ? Color.accentColor : .white)
+                                        .background(Circle().fill(.black.opacity(0.6)).padding(2)).padding(6)
+                                }
+                                .opacity(on ? 1 : 0.7)
+                        }.buttonStyle(.plain)
+                    } else {
+                        NavigationLink(value: m) { Cover(manga: m, badgeUnread: m.unreadCount, badgeDevice: device?.mangaCount(m.id)) }
+                            .buttonStyle(.plain)
+                            .contextMenu { if let menu = menu { menu(m) } }
+                    }
+                }
+                .onAppear { if m.id == mangas.last?.id { onEnd?() } }
             }
         }
         .padding(.horizontal, 12)
