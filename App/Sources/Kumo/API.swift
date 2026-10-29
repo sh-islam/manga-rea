@@ -154,7 +154,11 @@ final class API: ObservableObject {
         if code == 401 { throw APIError.unauthorized }
         guard code == 200 else { throw APIError.http(code) }
         let r = try JSONDecoder().decode(GQLResponse<T>.self, from: data)
-        if let e = r.errors, !e.isEmpty { throw APIError.server(e.map { $0.message.components(separatedBy: "\n").first ?? "" }.joined(separator: "; ")) }
+        if let e = r.errors, !e.isEmpty {
+            let msg = e.map { $0.message.components(separatedBy: "\n").first ?? "" }.joined(separator: "; ")
+            if msg.range(of: "token|unauthori|authenticat|forbidden", options: [.regularExpression, .caseInsensitive]) != nil { throw APIError.unauthorized }
+            throw APIError.server(msg)
+        }
         guard let d = r.data else { throw APIError.server("empty response") }
         return d
     }
@@ -162,12 +166,16 @@ final class API: ObservableObject {
     func gql<T: Decodable>(_ query: String, _ vars: [String: Any] = [:], as: T.Type = T.self) async throws -> T {
         do { return try await raw(query, vars, auth: token, as: T.self) }
         catch APIError.unauthorized {
-            guard !refresh.isEmpty else { logout(); throw APIError.unauthorized }
-            do {
-                let r: RefreshResp = try await raw("mutation($t:String!){ refreshToken(input:{refreshToken:$t}) { accessToken } }", ["t": refresh], auth: nil, as: RefreshResp.self)
+            if !refresh.isEmpty, let r: RefreshResp = try? await raw("mutation($t:String!){ refreshToken(input:{refreshToken:$t}) { accessToken } }", ["t": refresh], auth: nil, as: RefreshResp.self) {
                 token = r.refreshToken.accessToken
-            } catch { logout(); throw APIError.unauthorized }
-            return try await raw(query, vars, auth: token, as: T.self)
+                return try await raw(query, vars, auth: token, as: T.self)
+            }
+            // refresh token rejected too (server restarted with a new secret): sign in again with the built-in login
+            if !BuiltIn.server.isEmpty {
+                do { try await login(server: BuiltIn.server, user: BuiltIn.user, pass: BuiltIn.pass); return try await raw(query, vars, auth: token, as: T.self) }
+                catch { logout(); throw APIError.unauthorized }
+            }
+            logout(); throw APIError.unauthorized
         }
     }
 

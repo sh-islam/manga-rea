@@ -28,7 +28,11 @@ const Kumo = (() => {
     if (r.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
     if (!r.ok) throw new Error('Server answered ' + r.status + ' at ' + cfg.api + ' (check the address in Settings)');
     const d = await r.json();
-    if (d.errors && d.errors.length) throw new Error(d.errors.map(e => e.message.split('\n')[0]).join('; '));
+    if (d.errors && d.errors.length) {
+      const msg = d.errors.map(e => e.message.split('\n')[0]).join('; ');
+      if (/token|unauthori|authenticat|forbidden/i.test(msg)) throw Object.assign(new Error('unauthorized'), { code: 401 });
+      throw new Error(msg);
+    }
     return d.data;
   }
 
@@ -40,7 +44,7 @@ const Kumo = (() => {
       if (e.code !== 401 || !cfg.refresh) throw e;
       refreshing = refreshing || gqlRaw('mutation($t:String!){ refreshToken(input:{refreshToken:$t}) { accessToken } }', { t: cfg.refresh })
         .then(d => { LS.setItem('kumo.token', d.refreshToken.accessToken); })
-        .catch(() => { logout(); throw e; })
+        .catch(() => { logout(); location.hash = '#/login'; throw e; })
         .finally(() => { refreshing = null; });
       await refreshing;
       return gqlRaw(query, variables, cfg.token);
