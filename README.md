@@ -14,7 +14,7 @@ files in from a browser). Three parts, one account, everything in sync through t
 │ server/  Suwayomi-Server (JVM) = the extension runtime. Runs the real      │
 │          Tachiyomi/Mihon extension APKs from keiyoushi (+ any repo you add)│
 │          /home/shad/kumo/manga/<source>/<manga>/<chapter>.cbz             │
-│          https://shad-server.elf-tarpon.ts.net:8443  (Tailscale Funnel)   │
+│          https://shad-server.elf-tarpon.ts.net:8443/kumo  (Funnel)      │
 └───────────────▲───────────────────────────────────────────────────────────┘
                 │ same GraphQL + chapter/page files
 ┌───────────────┴───────────────────────────────────────────────────────────┐
@@ -48,10 +48,10 @@ App/           xtool iOS project
 
 ## Setting it up (one time, run by you)
 
-1. `bash server/deploy.sh` — installs the backend (Suwayomi + file service) as services on shad-server,
+1. `bash server/deploy.sh` (from Git Bash in this folder) — installs the backend (Suwayomi + file service) as services on shad-server,
    bound to localhost. Login is `shad` / the password in `server/.env`.
-2. `bash server/expose.sh` — Tailscale Funnel: https://shad-server.elf-tarpon.ts.net:8443 → backend, and
-   `/files` → file service. Valid certificate, reachable from anywhere; nothing works without the login.
+2. `bash server/expose.sh` — Tailscale Funnel: https://shad-server.elf-tarpon.ts.net:8443/kumo → backend and
+   `/kumo/files` → file service (port 8443's root stays your video site). Valid certificate, reachable from anywhere; nothing works without the login.
 3. `bash publish.sh` — creates the public GitHub repo `kumo` and turns on Pages; the web app then lives at
    https://sh-islam.github.io/kumo/ and redeploys on every push that touches `web/`.
 4. `common\ship.cmd manga-rea` with the phone plugged in — installs the iOS app.

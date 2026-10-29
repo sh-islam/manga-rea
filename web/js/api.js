@@ -3,7 +3,7 @@
 const Kumo = (() => {
   const LS = window.localStorage;
   const cfg = {
-    get api() { return LS.getItem('kumo.api') || 'https://shad-server.elf-tarpon.ts.net:8443'; },
+    get api() { return LS.getItem('kumo.api') || 'https://shad-server.elf-tarpon.ts.net:8443/kumo'; },
     set api(v) { LS.setItem('kumo.api', v.replace(/\/+$/, '')); },
     get files() { return LS.getItem('kumo.files') || (this.api + '/files'); },
     set files(v) { LS.setItem('kumo.files', v.replace(/\/+$/, '')); },

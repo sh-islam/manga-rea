@@ -111,7 +111,7 @@ final class API: ObservableObject {
     @Published var loggedIn: Bool = false
 
     var base: String {
-        get { d.string(forKey: "api") ?? "https://shad-server.elf-tarpon.ts.net:8443" }
+        get { d.string(forKey: "api") ?? "https://shad-server.elf-tarpon.ts.net:8443/kumo" }
         set { d.set(newValue.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")), forKey: "api") }
     }
     var filesBase: String { d.string(forKey: "files") ?? (base + "/files") }
