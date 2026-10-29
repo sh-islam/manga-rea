@@ -1,0 +1,30 @@
+# /etc/nginx/sites-available/kumo — fronts the Kumo backends on 127.0.0.1:4570 for Tailscale Funnel (/kumo).
+# Adds the Private Network Access header Chrome needs when the Funnel name resolves to the tailnet IP
+# (public origin github.io -> private 100.x address), which Suwayomi itself cannot send.
+server {
+    listen 127.0.0.1:4570;
+    server_name _;
+    client_max_body_size 0;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
+
+    location /app/ {
+        alias /home/shad/kumo/web/;
+        index index.html;
+        add_header Cache-Control "no-cache";
+    }
+    location /files/ {
+        add_header Access-Control-Allow-Private-Network true always;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_pass http://127.0.0.1:4569/;
+    }
+    location / {
+        add_header Access-Control-Allow-Private-Network true always;
+        proxy_buffering off;
+        proxy_pass http://127.0.0.1:4567;
+    }
+}

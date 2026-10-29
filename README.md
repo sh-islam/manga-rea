@@ -53,7 +53,10 @@ App/           xtool iOS project
 2. `bash server/expose.sh` — Tailscale Funnel: https://shad-server.elf-tarpon.ts.net:8443/kumo → backend and
    `/kumo/files` → file service (port 8443's root stays your video site). Valid certificate, reachable from anywhere; nothing works without the login.
 3. `bash publish.sh` — creates the public GitHub repo `kumo` and turns on Pages; the web app then lives at
-   https://sh-islam.github.io/kumo/ and redeploys on every push that touches `web/`.
+   https://sh-islam.github.io/kumo/ and redeploys on every push that touches `web/`. The same app is also
+   served by the server at https://shad-server.elf-tarpon.ts.net:8443/kumo/app/ — use that one on devices
+   that are on the tailnet (Chrome otherwise asks for "local network" permission because the name resolves
+   to the 100.x address there; allowing it once also works).
 4. `common\ship.cmd manga-rea` with the phone plugged in — installs the iOS app.
 
 ## Status

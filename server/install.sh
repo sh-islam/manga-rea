@@ -6,6 +6,7 @@ mkdir -p data manga local backups
 cp -f server.conf data/server.conf
 sudo cp -f kumo.service /etc/systemd/system/kumo.service
 sudo cp -f kumo-files.service /etc/systemd/system/kumo-files.service
+sudo cp -f kumo.nginx /etc/nginx/sites-available/kumo && sudo ln -sf /etc/nginx/sites-available/kumo /etc/nginx/sites-enabled/kumo && sudo nginx -t >/dev/null 2>&1 && sudo systemctl reload nginx
 sudo systemctl daemon-reload
 sudo systemctl enable kumo.service kumo-files.service >/dev/null
 sudo systemctl restart kumo.service kumo-files.service

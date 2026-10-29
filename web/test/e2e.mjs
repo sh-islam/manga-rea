@@ -6,9 +6,11 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const [base, chrome, out] = process.argv.slice(2);
+const SERVER = process.env.KUMO_SERVER || 'http://127.0.0.1:4567';
+const FILES = process.env.KUMO_FILES || SERVER + '/files';
 mkdirSync(out, { recursive: true });
 const port = 9333;
-const proc = spawn(chrome, [`--remote-debugging-port=${port}`, '--headless=new', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${join(out, 'profile')}`, '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
+const proc = spawn(chrome, [...(process.env.KUMO_CHROME_FLAGS || '').split(' ').filter(Boolean), `--remote-debugging-port=${port}`, '--headless=new', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${join(out, 'profile')}`, '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let ws, id = 0; const pending = new Map(); const events = [];
 async function connect() {
@@ -30,11 +32,10 @@ try {
   await connect();
   await send('Runtime.enable'); await send('Page.enable');
   await send('Page.navigate', { url: base + '/index.html#/login' }); await sleep(1500);
-  await evaluate(`localStorage.setItem('kumo.files', 'http://127.0.0.1:4569')`);
   console.log('login page:', (await text()).split('\n')[0]);
-  await evaluate(`document.querySelector('#u').value = ${JSON.stringify(process.env.KUMO_USER)}; document.querySelector('#p').value = ${JSON.stringify(process.env.KUMO_PASS)}; document.querySelector('#s').value = 'http://127.0.0.1:4567'; document.querySelector('form').requestSubmit();`);
+  await evaluate(`document.querySelector('#u').value = ${JSON.stringify(process.env.KUMO_USER)}; document.querySelector('#p').value = ${JSON.stringify(process.env.KUMO_PASS)}; document.querySelector('#s').value = ${JSON.stringify(SERVER)}; document.querySelector('form').requestSubmit();`);
   await sleep(2500);
-  await evaluate(`localStorage.setItem('kumo.files', 'http://127.0.0.1:4569'); Kumo.login(${JSON.stringify(process.env.KUMO_USER)}, ${JSON.stringify(process.env.KUMO_PASS)})`); await sleep(1500);
+  await evaluate(`localStorage.setItem('kumo.files', ${JSON.stringify(FILES)}); Kumo.login(${JSON.stringify(process.env.KUMO_USER)}, ${JSON.stringify(process.env.KUMO_PASS)})`); await sleep(1500);
   console.log('api sources:', JSON.stringify(await evaluate(`Kumo.q.sources().then(s => [s.length, s.slice(0,3).map(x => [x.displayName, x.lang, x.isNsfw])])`)), 'installed exts:', JSON.stringify(await evaluate(`Kumo.q.extensions().then(e => e.filter(x => x.isInstalled).map(x => x.pkgName))`)));
   console.log('after login hash:', await evaluate('location.hash'), '| token stored:', await evaluate('!!localStorage.getItem("kumo.token")'));
   for (const [hash, name] of [['#/library', 'library'], ['#/browse', 'browse'], ['#/extensions', 'extensions'], ['#/downloads', 'downloads'], ['#/files', 'files'], ['#/files/local', 'files-local'], ['#/updates', 'updates'], ['#/settings', 'settings']]) {
