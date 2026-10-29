@@ -34,7 +34,7 @@ struct LibraryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 if !readingNow.isEmpty && filter.isEmpty {
-                    Text("Reading now").font(.headline).padding(.horizontal, 12)
+                    HStack(alignment: .firstTextBaseline) { Text("Continue reading").font(.headline); Text("recent history; greyed = not in your library").font(.caption2).foregroundStyle(.secondary) }.padding(.horizontal, 12)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) { ForEach(readingNow) { c in ReadingNowCard(c: c) } }.padding(.horizontal, 12)
                     }
@@ -84,8 +84,8 @@ struct ReadingNowCard: View {
         NavigationLink(value: ReaderTarget(manga: Manga(id: c.manga?.id ?? 0, title: c.manga?.title ?? "", thumbnailUrl: c.manga?.thumbnailUrl, inLibrary: true), chapters: [], chapterId: c.id)) {
             VStack(alignment: .leading, spacing: 4) {
                 AsyncImage(url: api.img(c.manga?.thumbnailUrl)) { $0.resizable().scaledToFill() } placeholder: { Color(.secondarySystemBackground) }.frame(width: 120, height: 170).clipShape(RoundedRectangle(cornerRadius: 8))
-                Text(c.manga?.title ?? "").font(.caption.bold()).lineLimit(1)
-                Text(c.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                Text(c.manga?.title ?? "").font(.caption.bold()).lineLimit(1).foregroundStyle((c.manga?.inLibrary ?? true) ? .primary : .secondary)
+                Text((c.manga?.inLibrary ?? true) ? c.name : "not in library · " + c.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 ProgressView(value: c.pageCount > 0 ? Double(min(c.lastPageRead + 1, c.pageCount)) / Double(c.pageCount) : 0).tint(.accentColor)
             }.frame(width: 120)
         }.buttonStyle(.plain)

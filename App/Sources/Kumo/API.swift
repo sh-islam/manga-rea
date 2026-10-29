@@ -51,7 +51,7 @@ struct Chapter: Decodable, Identifiable, Hashable {
     var fetchedAt: String?
     var lastReadAt: String?
     var manga: MangaRef?
-    struct MangaRef: Decodable, Hashable { var id: Int; var title: String; var thumbnailUrl: String? }
+    struct MangaRef: Decodable, Hashable { var id: Int; var title: String; var thumbnailUrl: String?; var inLibrary: Bool? }
     static func == (a: Chapter, b: Chapter) -> Bool { a.id == b.id }
     func hash(into h: inout Hasher) { h.combine(id) }
 }
@@ -278,7 +278,7 @@ final class API: ObservableObject {
     }
     func history() async throws -> [Chapter] {
         struct R: Decodable { var chapters: Nodes<Chapter> }
-        let r: R = try await gql("{ chapters(filter:{lastReadAt:{greaterThan:\"0\"}}, order:[{by:LAST_READ_AT, byType:DESC}], first:60) { nodes { \(API.CHAPTER) lastReadAt manga { id title thumbnailUrl } } } }")
+        let r: R = try await gql("{ chapters(filter:{lastReadAt:{greaterThan:\"0\"}}, order:[{by:LAST_READ_AT, byType:DESC}], first:60) { nodes { \(API.CHAPTER) lastReadAt manga { id title thumbnailUrl inLibrary } } } }")
         return r.chapters.nodes
     }
     func updateLibrary() async throws { let _: Ok = try await gql("mutation{ updateLibrary(input:{}) { updateStatus { isRunning } } }") }
