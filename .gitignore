@@ -1,0 +1,6 @@
+re/dl/
+server/.env
+server/schema.json
+.DS_Store
+App/.build/
+App/xtool/

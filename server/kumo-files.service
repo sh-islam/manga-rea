@@ -1,0 +1,13 @@
+[Unit]
+Description=Kumo file service (uploads / folders for the Local source)
+After=network-online.target kumo.service
+
+[Service]
+User=shad
+WorkingDirectory=/home/shad/kumo
+ExecStart=/usr/bin/python3 /home/shad/kumo/kumo_files.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

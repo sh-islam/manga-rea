@@ -1,0 +1,15 @@
+[Unit]
+Description=Kumo manga backend (Suwayomi-Server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=shad
+WorkingDirectory=/home/shad/kumo
+ExecStart=/usr/bin/java -Xms128m -Xmx768m -XX:+UseSerialGC -Djava.awt.headless=true -Dsuwayomi.tachidesk.config.server.rootDir=/home/shad/kumo/data -jar /home/shad/kumo/Suwayomi-Server-v2.4.2366.jar
+Restart=on-failure
+RestartSec=10
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
