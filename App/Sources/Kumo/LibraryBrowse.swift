@@ -70,7 +70,7 @@ struct LibraryView: View {
         .sheet(isPresented: $showCats) { CategoriesSheet(cats: cats) { Task { await load() } } }
     }
     func load() async {
-        do { async let a = api.library(); async let c = api.categories(); async let h = api.history(); all = try await a; cats = try await c; let hist = try await h
+        do { let (a, c, hist) = try await withRetry { async let a = api.library(); async let c = api.categories(); async let h = api.history(); return (try await a, try await c, try await h) }; all = a; cats = c
             var seen = Set<Int>(); readingNow = hist.filter { c in guard let m = c.manga, !seen.contains(m.id) else { return false }; seen.insert(m.id); return true }.prefix(10).map { $0 }; error = "" } catch { self.error = error.localizedDescription }
         loading = false
     }
@@ -158,7 +158,7 @@ struct BrowseView: View {
         .task { await load() }
         .refreshable { await load() }
     }
-    func load() async { do { sources = try await api.sources(); error = "" } catch { self.error = error.localizedDescription } }
+    func load() async { do { sources = try await withRetry { try await api.sources() }; error = "" } catch { if !isCancellation(error) { self.error = "Server not ready: " + error.localizedDescription + " — pull down to retry" } } }
     func search() async {
         let q = query.trimmingCharacters(in: .whitespaces); guard !q.isEmpty else { return }
         searching = true; results = []

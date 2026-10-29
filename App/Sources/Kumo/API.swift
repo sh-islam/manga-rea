@@ -336,6 +336,15 @@ final class API: ObservableObject {
 
 // MARK: - helpers
 
+/// Retries a request a few times (the server answers errors for a few seconds while it restarts and loads extensions).
+func withRetry<T>(_ attempts: Int = 3, delay: UInt64 = 2_000_000_000, _ op: () async throws -> T) async throws -> T {
+    var last: Error?
+    for i in 0..<attempts {
+        do { return try await op() } catch { last = error; if isCancellation(error) { throw error }; if i + 1 < attempts { try? await Task.sleep(nanoseconds: delay) } }
+    }
+    throw last!
+}
+
 func fmtDate(_ s: String?) -> String {
     guard let s = s, var n = Double(s), n > 0 else { return "" }
     if n < 1e11 { n *= 1000 }
