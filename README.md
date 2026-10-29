@@ -59,6 +59,12 @@ App/           xtool iOS project
    to the 100.x address there; allowing it once also works).
 4. `common\ship.cmd manga-rea` with the phone plugged in — installs the iOS app.
 
+## Server notes
+
+- The backend runs under `xvfb-run` because Suwayomi's bundled Chromium (KCEF) needs an X display. KCEF is on:
+  many sources (anything behind Cloudflare or needing JavaScript, e.g. mkissa.to) only work with it. It costs
+  ~250 MB disk in `data/bin/kcef` and a few hundred MB of RAM while a WebView is open.
+
 ## Status
 
 - 2026-10-29: backend verified end to end on the server with a transient run (MangaDex extension installed
