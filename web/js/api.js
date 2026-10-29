@@ -102,7 +102,9 @@ const Kumo = (() => {
     setCategories: (id, add, remove) => gql('mutation($id:Int!,$a:[Int!],$r:[Int!]){ updateMangaCategories(input:{id:$id, patch:{addToCategories:$a, removeFromCategories:$r}}) { manga { id } } }', { id, a: add, r: remove }),
     createCategory: (name) => gql('mutation($n:String!){ createCategory(input:{name:$n}) { category { id } } }', { n: name }),
     deleteCategory: (id) => gql('mutation($id:Int!){ deleteCategory(input:{categoryId:$id}) { category { id } } }', { id }),
-    download: (ids) => gql('mutation($ids:[Int!]!){ enqueueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }', { ids }),
+    // a download implies "keep this": put the manga in the library first (categories stay as they are)
+    ensureLibrary: async (mangaId) => { const d = await gql('query($id:Int!){ manga(id:$id) { inLibrary } }', { id: mangaId }); if (!d.manga.inLibrary) await q.setLibrary(mangaId, true); },
+    download: async (ids, mangaId) => { if (mangaId != null) await q.ensureLibrary(mangaId); return gql('mutation($ids:[Int!]!){ enqueueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }', { ids }); },
     deleteDownloads: (ids) => gql('mutation($ids:[Int!]!){ deleteDownloadedChapters(input:{ids:$ids}) { chapters { id isDownloaded } } }', { ids }),
     dequeue: (ids) => gql('mutation($ids:[Int!]!){ dequeueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }', { ids }),
     downloadStatus: () => gql(`{ downloadStatus { state queue { position progress state tries chapter { id name } manga { id title } } } }`).then(d => d.downloadStatus),

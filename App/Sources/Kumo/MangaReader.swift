@@ -21,8 +21,9 @@ struct MangaView: View {
     @State private var showCats = false
     @State private var cats: [Category] = []
     @State private var toast = ""
+    @AppStorage("chapters.asc") private var ascending = false
 
-    var sorted: [Chapter] { chapters.sorted { $0.sourceOrder < $1.sourceOrder } }   // newest first (source order 0 = latest)
+    var sorted: [Chapter] { ascending ? chapters.sorted { $0.sourceOrder > $1.sourceOrder } : chapters.sorted { $0.sourceOrder < $1.sourceOrder } }   // source order 0 = latest
     var unread: [Chapter] { chapters.filter { !$0.isRead } }
     var resume: Chapter? {
         if let l = manga?.lastReadChapter, let c = chapters.first(where: { $0.id == l.id }) { return c }
@@ -68,6 +69,7 @@ struct MangaView: View {
                         Spacer()
                         Menu { downloadMenu(m) } label: { Label("Download", systemImage: "arrow.down.circle") }
                         Button(selecting ? "Done" : "Select") { selecting.toggle(); sel.removeAll() }
+                        Button { ascending.toggle() } label: { Image(systemName: ascending ? "arrow.up" : "arrow.down") }.help(ascending ? "Oldest first" : "Newest first")
                     }.textCase(nil)
                 }
             }
@@ -100,7 +102,7 @@ struct MangaView: View {
                 Button { device.enqueue(m, [c]) } label: { Label(onDevice ? "On this device" : "Download to this device", systemImage: "iphone.and.arrow.down") }.disabled(onDevice)
                 if onDevice { Button(role: .destructive) { device.remove(c.id) } label: { Label("Remove from device", systemImage: "iphone.slash") } }
                 if c.isDownloaded { Button(role: .destructive) { Task { try? await api.deleteDownloads([c.id]); await load(refresh: false) } } label: { Label("Delete from server", systemImage: "icloud.slash") } }
-                else { Button { Task { try? await api.download([c.id]); flash("Queued on server") } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") } }
+                else { Button { Task { try? await api.download([c.id], mangaId: m.id); flash("Queued on server") } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") } }
                 Divider()
                 Button { Task { try? await api.markRead([c.id], read: !c.isRead, lastPage: c.isRead ? 0 : nil); await load(refresh: false) } } label: { Label(c.isRead ? "Mark unread" : "Mark read", systemImage: c.isRead ? "eye.slash" : "eye") }
                 Button { Task { let ids = chapters.filter { $0.sourceOrder > c.sourceOrder }.map { $0.id }; if !ids.isEmpty { try? await api.markRead(ids, read: true) }; await load(refresh: false) } } label: { Label("Mark previous as read", systemImage: "eye.fill") }
@@ -116,9 +118,9 @@ struct MangaView: View {
         let notOnServer = chapters.filter { !$0.isDownloaded }
         let unreadNext = unread.sorted { $0.sourceOrder > $1.sourceOrder }   // oldest unread first
         Section("To the server") {
-            ForEach([1, 5, 10, 25], id: \.self) { n in Button("Next \(n) unread") { Task { let ids = Array(unreadNext.filter { !$0.isDownloaded }.prefix(n)).map { $0.id }; try? await api.download(ids); flash("\(ids.count) queued on server") } } }
-            Button("All unread (\(unread.count))") { Task { let ids = unread.filter { !$0.isDownloaded }.map { $0.id }; try? await api.download(ids); flash("\(ids.count) queued on server") } }
-            Button("Everything (\(notOnServer.count))") { Task { try? await api.download(notOnServer.map { $0.id }); flash("\(notOnServer.count) queued on server") } }
+            ForEach([1, 5, 10, 25], id: \.self) { n in Button("Next \(n) unread") { Task { let ids = Array(unreadNext.filter { !$0.isDownloaded }.prefix(n)).map { $0.id }; try? await api.download(ids, mangaId: m.id); flash("\(ids.count) queued on server") } } }
+            Button("All unread (\(unread.count))") { Task { let ids = unread.filter { !$0.isDownloaded }.map { $0.id }; try? await api.download(ids, mangaId: m.id); flash("\(ids.count) queued on server") } }
+            Button("Everything (\(notOnServer.count))") { Task { try? await api.download(notOnServer.map { $0.id }, mangaId: m.id); flash("\(notOnServer.count) queued on server") } }
         }
         Section("To this device") {
             ForEach([1, 5, 10], id: \.self) { n in Button("Next \(n) unread") { device.enqueue(m, Array(unreadNext.prefix(n))); flash("Downloading to device") } }
@@ -132,7 +134,7 @@ struct MangaView: View {
             Spacer()
             Button("All") { sel = Set(chapters.map { $0.id }) }
             Menu("Actions") {
-                Button { Task { try? await api.download(Array(sel)); flash("Queued on server"); selecting = false } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") }
+                Button { Task { try? await api.download(Array(sel), mangaId: m.id); flash("Queued on server"); selecting = false } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") }
                 Button { device.enqueue(m, chapters.filter { sel.contains($0.id) }.sorted { $0.sourceOrder > $1.sourceOrder }); selecting = false } label: { Label("Download to this device", systemImage: "iphone.and.arrow.down") }
                 Button { Task { try? await api.markRead(Array(sel), read: true); await load(refresh: false); selecting = false } } label: { Label("Mark read", systemImage: "eye") }
                 Button { Task { try? await api.markRead(Array(sel), read: false, lastPage: 0); await load(refresh: false); selecting = false } } label: { Label("Mark unread", systemImage: "eye.slash") }

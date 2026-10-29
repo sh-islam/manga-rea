@@ -242,7 +242,13 @@ final class API: ObservableObject {
     func setCategories(_ id: Int, add: [Int], remove: [Int]) async throws { let _: Ok = try await gql("mutation($id:Int!,$a:[Int!],$r:[Int!]){ updateMangaCategories(input:{id:$id, patch:{addToCategories:$a, removeFromCategories:$r}}) { manga { id } } }", ["id": id, "a": add, "r": remove]) }
     func createCategory(_ name: String) async throws { let _: Ok = try await gql("mutation($n:String!){ createCategory(input:{name:$n}) { category { id } } }", ["n": name]) }
     func deleteCategory(_ id: Int) async throws { let _: Ok = try await gql("mutation($id:Int!){ deleteCategory(input:{categoryId:$id}) { category { id } } }", ["id": id]) }
-    func download(_ ids: [Int]) async throws { let _: Ok = try await gql("mutation($ids:[Int!]!){ enqueueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }", ["ids": ids]) }
+    /// A download implies "keep this": the manga goes into the library first (categories untouched).
+    func ensureLibrary(_ mangaId: Int) async throws {
+        struct R: Decodable { struct M: Decodable { var inLibrary: Bool }; var manga: M }
+        let r: R = try await gql("query($id:Int!){ manga(id:$id) { inLibrary } }", ["id": mangaId])
+        if !r.manga.inLibrary { try await setLibrary(mangaId, true) }
+    }
+    func download(_ ids: [Int], mangaId: Int? = nil) async throws { if let m = mangaId { try await ensureLibrary(m) }; let _: Ok = try await gql("mutation($ids:[Int!]!){ enqueueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }", ["ids": ids]) }
     func deleteDownloads(_ ids: [Int]) async throws { let _: Ok = try await gql("mutation($ids:[Int!]!){ deleteDownloadedChapters(input:{ids:$ids}) { chapters { id } } }", ["ids": ids]) }
     func dequeue(_ ids: [Int]) async throws { let _: Ok = try await gql("mutation($ids:[Int!]!){ dequeueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }", ["ids": ids]) }
     func downloadStatus() async throws -> DownloadStatus {

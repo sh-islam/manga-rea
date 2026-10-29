@@ -163,19 +163,22 @@
       <div class="desc" id="desc">${esc(m.description || '')}</div>${(m.description || '').length > 300 ? '<a id="more" href="javascript:void 0" class="small">more</a>' : ''}
       <div class="chips" style="margin-top:8px">${(m.genre || []).map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div></div></div>
       <div class="row between" style="margin-top:16px"><h2 style="margin:0">${chapters.length} chapters <span class="muted small">${unread.length} unread · ${chapters.length - notDl.length} on server</span></h2>
-      <div class="row"><button id="dl">⇣ Download</button><button id="selm">Select</button></div></div>
+      <div class="row"><button id="dl">⇣ Download</button><button id="selm">Select</button><button id="ord" title="Chapter order"></button></div></div>
       <div id="selbar" class="row card" style="display:none"><span id="selc"></span><button data-a="dl">Download</button><button data-a="deldl">Delete download</button><button data-a="read">Mark read</button><button data-a="unread">Mark unread</button><button data-a="all">All</button><button data-a="none">None</button></div>
       <div class="list" id="chs"></div>`;
     const chs = view.querySelector('#chs');
-    const renderCh = () => { chs.innerHTML = chapters.slice().reverse().map(c => `<div class="it ${c.isRead ? 'read' : ''}" data-id="${c.id}">${selecting ? `<input type="checkbox" ${sel.has(c.id) ? 'checked' : ''}>` : ''}
+    const ordBtn = view.querySelector('#ord');
+    const renderCh = () => { const asc = localStorage.getItem('chapters.asc') === '1'; ordBtn.textContent = asc ? '↑ Oldest first' : '↓ Newest first';
+      chs.innerHTML = (asc ? chapters.slice() : chapters.slice().reverse()).map(c => `<div class="it ${c.isRead ? 'read' : ''}" data-id="${c.id}">${selecting ? `<input type="checkbox" ${sel.has(c.id) ? 'checked' : ''}>` : ''}
       <a class="m" href="#/read/${m.id}/${c.id}"><div>${c.isBookmarked ? '🔖 ' : ''}${esc(c.name)}</div><div class="muted small">${date(c.uploadDate)}${c.scanlator ? ' · ' + esc(c.scanlator) : ''}${!c.isRead && c.lastPageRead ? ` · page ${c.lastPageRead + 1}` : ''}</div></a>
       <button class="ic ${c.isDownloaded ? 'on' : ''}" data-dl="${c.id}" title="${c.isDownloaded ? 'On server (click to delete)' : 'Download to server'}">${c.isDownloaded ? '✓' : '⇣'}</button>
       <button class="ic" data-menu="${c.id}" title="More">⋯</button></div>`).join(''); };
     renderCh();
+    ordBtn.onclick = () => { localStorage.setItem('chapters.asc', localStorage.getItem('chapters.asc') === '1' ? '0' : '1'); renderCh(); };
     chs.onclick = async (e) => {
       const it = e.target.closest('.it'); if (!it) return; const id = Number(it.dataset.id); const c = chapters.find(x => x.id === id);
       if (e.target.matches('input[type=checkbox]') || (selecting && !e.target.closest('button'))) { e.preventDefault(); sel.has(id) ? sel.delete(id) : sel.add(id); it.querySelector('input').checked = sel.has(id); view.querySelector('#selc').textContent = sel.size + ' selected'; return; }
-      if (e.target.dataset.dl) { if (c.isDownloaded) { if (confirm('Delete this chapter from the server?')) { await q.deleteDownloads([id]); c.isDownloaded = false; renderCh(); } } else { await q.download([id]); c.isDownloaded = true; toast('Queued on server'); renderCh(); } }
+      if (e.target.dataset.dl) { if (c.isDownloaded) { if (confirm('Delete this chapter from the server?')) { await q.deleteDownloads([id]); c.isDownloaded = false; renderCh(); } } else { await q.download([id], m.id); c.isDownloaded = true; m.inLibrary = true; toast('Queued on server' + (m.inLibrary ? '' : ' · added to library')); renderCh(); } }
       if (e.target.dataset.menu) chapterMenu(c, chapters, () => renderCh());
     };
     view.querySelector('#lib').onclick = async () => { await q.setLibrary(m.id, !m.inLibrary); mangaView(id); toast(m.inLibrary ? 'Removed from library' : 'Added to library'); };
@@ -190,14 +193,14 @@
       const s = sheet(`<h2>Download to server</h2><p class="row"><button data-n="1">Next 1</button><button data-n="5">Next 5</button><button data-n="10">Next 10</button><button data-n="25">Next 25</button></p><p class="row"><button data-n="unread">All unread (${unread.length})</button><button data-n="all" class="primary">Everything not on server (${notDl.length})</button></p>`);
       s.onclick = async e => { const n = e.target.dataset.n; if (!n) return; let ids;
         if (n === 'all') ids = notDl.map(c => c.id); else if (n === 'unread') ids = unread.filter(c => !c.isDownloaded).map(c => c.id); else ids = unread.filter(c => !c.isDownloaded).slice(0, Number(n)).map(c => c.id);
-        if (ids.length) await q.download(ids); s.remove(); toast(ids.length + ' chapters queued'); setTimeout(() => mangaView(id), 800); };
+        if (ids.length) await q.download(ids, m.id); s.remove(); toast(ids.length + ' chapters queued'); setTimeout(() => mangaView(id), 800); };
     };
     view.querySelector('#selm').onclick = () => { selecting = !selecting; sel.clear(); view.querySelector('#selbar').style.display = selecting ? '' : 'none'; view.querySelector('#selc').textContent = '0 selected'; renderCh(); };
     view.querySelector('#selbar').onclick = async e => { const a = e.target.dataset.a; if (!a) return; const ids = [...sel];
       if (a === 'all') { chapters.forEach(c => sel.add(c.id)); renderCh(); view.querySelector('#selc').textContent = sel.size + ' selected'; return; }
       if (a === 'none') { sel.clear(); renderCh(); view.querySelector('#selc').textContent = '0 selected'; return; }
       if (!ids.length) return toast('Select chapters first');
-      if (a === 'dl') await q.download(ids); if (a === 'deldl') await q.deleteDownloads(ids); if (a === 'read') await q.markRead(ids, true); if (a === 'unread') await q.markRead(ids, false, 0);
+      if (a === 'dl') await q.download(ids, m.id); if (a === 'deldl') await q.deleteDownloads(ids); if (a === 'read') await q.markRead(ids, true); if (a === 'unread') await q.markRead(ids, false, 0);
       toast('Done'); mangaView(id); };
   }
   function chapterMenu(c, chapters, done) {
@@ -206,7 +209,7 @@
       if (a === 'read') { await q.markRead([c.id], !c.isRead, c.isRead ? 0 : undefined); c.isRead = !c.isRead; }
       if (a === 'below') { const ids = chapters.filter(x => x.sourceOrder > c.sourceOrder || (x.chapterNumber < c.chapterNumber && x.chapterNumber >= 0)).map(x => x.id); if (ids.length) { await q.markRead(ids, true); chapters.forEach(x => { if (ids.includes(x.id)) x.isRead = true; }); } }
       if (a === 'bm') { await q.bookmark([c.id], !c.isBookmarked); c.isBookmarked = !c.isBookmarked; }
-      if (a === 'dl') { await q.download([c.id]); c.isDownloaded = true; } if (a === 'deldl') { await q.deleteDownloads([c.id]); c.isDownloaded = false; }
+      if (a === 'dl') { await q.download([c.id], c.mangaId); c.isDownloaded = true; } if (a === 'deldl') { await q.deleteDownloads([c.id]); c.isDownloaded = false; }
       s.remove(); done(); };
   }
 

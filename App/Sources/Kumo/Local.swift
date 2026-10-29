@@ -46,6 +46,7 @@ final class DeviceStore: ObservableObject {
     }
 
     func enqueue(_ manga: Manga, _ chs: [Chapter]) {
+        Task { try? await API.shared.ensureLibrary(manga.id) }
         for c in chs where !has(c.id) && !queue.contains(where: { $0.chapter.id == c.id }) { queue.append((manga, c)) }
         run()
     }
