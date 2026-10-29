@@ -4,3 +4,4 @@ server/schema.json
 .DS_Store
 App/.build/
 App/xtool/
+App/Sources/Kumo/Secrets.swift

@@ -50,7 +50,7 @@ struct LoginView: View {
         VStack(spacing: 14) {
             Spacer()
             Image(systemName: "cloud.fill").font(.system(size: 56)).foregroundStyle(Color.accentColor)
-            Text("Kumo").font(.largeTitle.bold())
+            Text("Panels Rea").font(.largeTitle.bold())
             Text("Sign in to your server").foregroundStyle(.secondary)
             TextField("https://server:8443", text: $server).textContentType(.URL).keyboardType(.URL).autocapitalization(.none).textFieldStyle(.roundedBorder)
             TextField("username", text: $user).textContentType(.username).autocapitalization(.none).textFieldStyle(.roundedBorder)
@@ -62,7 +62,12 @@ struct LoginView: View {
             Spacer(); Spacer()
         }
         .padding(24)
-        .onAppear { server = api.base; user = api.user }
+        .onAppear {
+            server = api.base; user = api.user
+            // baked-in login (Secrets.swift, generated at build time, never in git): sign in without any setup
+            if !BuiltIn.server.isEmpty && !busy { server = BuiltIn.server; user = BuiltIn.user; pass = BuiltIn.pass
+                Task { busy = true; defer { busy = false }; do { try await api.login(server: server, user: user, pass: pass) } catch { self.error = "Auto sign-in failed: \(error.localizedDescription)" } } }
+        }
     }
 }
 

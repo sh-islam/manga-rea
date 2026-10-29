@@ -307,7 +307,7 @@ struct SettingsView: View {
                 Stepper("Check for new chapters every \(Int(interval)) h", value: $interval, in: 0...48, step: 6)
                 Button("Apply") { Task { do { try await api.setSettings(["downloadAsCbz": cbz, "autoDownloadNewChapters": auto, "globalUpdateInterval": interval]) } catch { self.error = error.localizedDescription } } }
             }
-            Section("About") { Text("Kumo: Tachiyomi-style sources through your own server (the server runs the extensions), Panels-style files and web server on the device. Same account and library as the web app.").font(.caption).foregroundStyle(.secondary) }
+            Section("About") { Text("Panels Rea: Tachiyomi-style sources through your own server (the server runs the extensions), Panels-style files and web server on the device. Same account and library as the web app.").font(.caption).foregroundStyle(.secondary) }
         }
         .navigationTitle("Settings")
         .task { server = api.base; do { about = try await api.about(); cbz = about!.settings.downloadAsCbz; auto = about!.settings.autoDownloadNewChapters; interval = about!.settings.globalUpdateInterval } catch { self.error = error.localizedDescription } }

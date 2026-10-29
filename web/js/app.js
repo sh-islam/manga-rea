@@ -16,7 +16,7 @@
   // ---------------- login
   function loginView(next) {
     nav('');
-    view.innerHTML = `<form class="login"><h1>Kumo</h1><p class="muted">Sign in to your server.</p>
+    view.innerHTML = `<form class="login"><h1>Manga</h1><p class="muted">Sign in to your server.</p>
       <input id="u" placeholder="username" autocomplete="username" value="${esc(cfg.user)}"><input id="p" type="password" placeholder="password" autocomplete="current-password">
       <input id="s" placeholder="server https://…" value="${esc(cfg.api)}"><button class="primary">Sign in</button><div id="err" class="muted"></div></form>`;
     view.querySelector('form').onsubmit = async (e) => {
@@ -367,7 +367,7 @@
       ${about ? `<div class="card"><h3 style="margin-top:0">Downloads &amp; updates</h3><label><input type="checkbox" id="cbz" ${about.settings.downloadAsCbz ? 'checked' : ''}> Save chapters as CBZ (one file per chapter)</label><br><label><input type="checkbox" id="auto" ${about.settings.autoDownloadNewChapters ? 'checked' : ''}> Auto-download new chapters of library manga</label><br>
         <label>Check for new chapters every <input id="int" type="number" min="6" step="1" value="${Number(about.settings.globalUpdateInterval)}" style="width:70px"> hours (0 = off)</label><p><button id="ss">Apply</button></p></div>` : ''}
       <div class="card"><h3 style="margin-top:0">Reader</h3><div class="muted small">Mode, fit and direction are set inside the reader (top bar) and remembered. Keys: <kbd>←</kbd> <kbd>→</kbd> <kbd>space</kbd>; tap edges to turn, middle to hide the bar.</div></div>
-      <div class="card"><h3 style="margin-top:0">About</h3><div class="muted small">Kumo — Tachiyomi-style sources through your own server, Panels-style files. The server runs the extensions; this page and the iPhone app only talk to it.</div></div>`;
+      <div class="card"><h3 style="margin-top:0">About</h3><div class="muted small">Manga — Tachiyomi-style sources through your own server, Panels-style files. The server runs the extensions; this page and the Panels Rea iPhone app only talk to it.</div></div>`;
     view.querySelector('#save').onclick = () => { cfg.api = view.querySelector('#api').value.trim(); cfg.files = view.querySelector('#files').value.trim(); toast('Saved'); };
     view.querySelector('#logout').onclick = () => { Kumo.logout(); location.hash = '#/login'; };
     const ss = view.querySelector('#ss'); if (ss) ss.onclick = async () => { await q.setSettings({ downloadAsCbz: view.querySelector('#cbz').checked, autoDownloadNewChapters: view.querySelector('#auto').checked, globalUpdateInterval: Number(view.querySelector('#int').value) }); toast('Applied'); };

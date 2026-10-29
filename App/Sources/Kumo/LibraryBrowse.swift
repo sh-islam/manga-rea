@@ -14,6 +14,7 @@ struct LibraryView: View {
     @State private var error = ""
     @State private var loading = true
     @State private var showCats = false
+    @State private var readingNow: [Chapter] = []
 
     var list: [Manga] {
         var l = all.filter { cat < 0 || ($0.categories?.nodes.contains { $0.id == cat } ?? false) }
@@ -32,6 +33,12 @@ struct LibraryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
+                if !readingNow.isEmpty && filter.isEmpty {
+                    Text("Reading now").font(.headline).padding(.horizontal, 12)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) { ForEach(readingNow) { c in ReadingNowCard(c: c) } }.padding(.horizontal, 12)
+                    }
+                }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         Chip(text: "All (\(all.count))", on: cat < 0) { cat = -1 }
@@ -63,8 +70,30 @@ struct LibraryView: View {
         .sheet(isPresented: $showCats) { CategoriesSheet(cats: cats) { Task { await load() } } }
     }
     func load() async {
-        do { async let a = api.library(); async let c = api.categories(); all = try await a; cats = try await c; error = "" } catch { self.error = error.localizedDescription }
+        do { async let a = api.library(); async let c = api.categories(); async let h = api.history(); all = try await a; cats = try await c; let hist = try await h
+            var seen = Set<Int>(); readingNow = hist.filter { c in guard let m = c.manga, !seen.contains(m.id) else { return false }; seen.insert(m.id); return true }.prefix(10).map { $0 }; error = "" } catch { self.error = error.localizedDescription }
         loading = false
+    }
+}
+
+/// Panels-style "Reading Now" card: cover + chapter + progress bar, opens the reader where you left off.
+struct ReadingNowCard: View {
+    @EnvironmentObject var api: API
+    let c: Chapter
+    @State private var target: ReaderTarget?
+    var body: some View {
+        Button {
+            guard let m = c.manga else { return }
+            Task { if let d = try? await api.manga(m.id, refresh: false) { target = ReaderTarget(manga: d.manga, chapters: d.chapters, chapterId: c.id) } }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                AsyncImage(url: api.img(c.manga?.thumbnailUrl)) { $0.resizable().scaledToFill() } placeholder: { Color(.secondarySystemBackground) }.frame(width: 120, height: 170).clipShape(RoundedRectangle(cornerRadius: 8))
+                Text(c.manga?.title ?? "").font(.caption.bold()).lineLimit(1)
+                Text(c.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                ProgressView(value: c.pageCount > 0 ? Double(min(c.lastPageRead + 1, c.pageCount)) / Double(c.pageCount) : 0).tint(.accentColor)
+            }.frame(width: 120)
+        }.buttonStyle(.plain)
+        .navigationDestination(item: $target) { ReaderView(target: $0) }
     }
 }
 

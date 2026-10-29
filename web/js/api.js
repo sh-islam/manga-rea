@@ -5,7 +5,7 @@ const Kumo = (() => {
   const cfg = {
     // default backend: when this page is served by the server itself (…/kumo/app/), talk to that same origin;
     // on GitHub Pages use the public Funnel address.
-    get api() { return LS.getItem('kumo.api') || (location.pathname.includes('/kumo/app') ? location.origin + '/kumo' : 'https://shad-server.elf-tarpon.ts.net:8443/kumo'); },
+    get api() { return LS.getItem('kumo.api') || (location.pathname.includes('/manga/app') ? location.origin + '/manga' : 'https://shad-server.elf-tarpon.ts.net:8443/manga'); },
     set api(v) { LS.setItem('kumo.api', v.replace(/\/+$/, '')); },
     get files() { return LS.getItem('kumo.files') || (this.api + '/files'); },
     set files(v) { LS.setItem('kumo.files', v.replace(/\/+$/, '')); },

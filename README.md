@@ -1,4 +1,4 @@
-# manga-rea — Kumo
+# manga-rea — Manga (web) / Panels Rea (iOS)
 
 A manga app in the spirit of **Tachimanga** (Tachiyomi for iOS: extension repos, browse/search any source,
 library, updates, reader) crossed with **Panels** (cover-first library, folders, built-in web server to drop
@@ -6,7 +6,7 @@ files in from a browser). Three parts, one account, everything in sync through t
 
 ```
                  ┌──────────────── GitHub Pages (sh-islam) ─────────────────┐
-                 │  web/   Kumo web app: search sources, download to server, │
+                 │  web/   Manga web app: search sources, download to server, │
                  │         move/rename/delete, manage extension repos        │
                  └───────────────▲──────────────────────────────────────────┘
                                  │ GraphQL over HTTPS (JWT login)
@@ -14,11 +14,11 @@ files in from a browser). Three parts, one account, everything in sync through t
 │ server/  Suwayomi-Server (JVM) = the extension runtime. Runs the real      │
 │          Tachiyomi/Mihon extension APKs from keiyoushi (+ any repo you add)│
 │          /home/shad/kumo/manga/<source>/<manga>/<chapter>.cbz             │
-│          https://shad-server.elf-tarpon.ts.net:8443/kumo  (Funnel)      │
+│          https://shad-server.elf-tarpon.ts.net:8443/manga  (Funnel)      │
 └───────────────▲───────────────────────────────────────────────────────────┘
                 │ same GraphQL + chapter/page files
 ┌───────────────┴───────────────────────────────────────────────────────────┐
-│ App/   Kumo for iPhone/iPad (xtool, SwiftUI): Library · Updates · Browse  │
+│ App/   Panels Rea for iPhone/iPad (xtool, SwiftUI): Library · Updates · Browse  │
 │        (search through the server's sources) · Downloads (to server, to   │
 │        device, or server→device) · Panels-style reader · Web Server tab   │
 │        (drop CBZ/ZIP from a PC browser straight onto the phone)           │
@@ -50,11 +50,11 @@ App/           xtool iOS project
 
 1. `bash server/deploy.sh` (from Git Bash in this folder) — installs the backend (Suwayomi + file service) as services on shad-server,
    bound to localhost. Login is `shad` / the password in `server/.env`.
-2. `bash server/expose.sh` — Tailscale Funnel: https://shad-server.elf-tarpon.ts.net:8443/kumo → backend and
+2. `bash server/expose.sh` — Tailscale Funnel: https://shad-server.elf-tarpon.ts.net:8443/manga → backend and
    `/kumo/files` → file service (port 8443's root stays your video site). Valid certificate, reachable from anywhere; nothing works without the login.
-3. `bash publish.sh` — creates the public GitHub repo `kumo` and turns on Pages; the web app then lives at
-   https://sh-islam.github.io/kumo/ and redeploys on every push that touches `web/`. The same app is also
-   served by the server at https://shad-server.elf-tarpon.ts.net:8443/kumo/app/ — use that one on devices
+3. `bash publish.sh` — creates the public GitHub repo `manga-rea` and turns on Pages; the web app then lives at
+   https://sh-islam.github.io/manga-rea/ and redeploys on every push that touches `web/`. The same app is also
+   served by the server at https://shad-server.elf-tarpon.ts.net:8443/manga/app/ — use that one on devices
    that are on the tailnet (Chrome otherwise asks for "local network" permission because the name resolves
    to the 100.x address there; allowing it once also works).
 4. `common\ship.cmd manga-rea` with the phone plugged in — installs the iOS app.
