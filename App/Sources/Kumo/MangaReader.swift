@@ -22,6 +22,7 @@ struct MangaView: View {
     @State private var cats: [Category] = []
     @State private var toast = ""
     @AppStorage("chapters.asc") private var ascending = false
+    @State private var queue: [Int: DownloadItem] = [:]   // server queue by chapter id
 
     var sorted: [Chapter] { ascending ? chapters.sorted { $0.sourceOrder > $1.sourceOrder } : chapters.sorted { $0.sourceOrder < $1.sourceOrder } }   // source order 0 = latest
     var unread: [Chapter] { chapters.filter { !$0.isRead } }
@@ -78,6 +79,16 @@ struct MangaView: View {
         .kumoDestinations()
         .navigationTitle(manga?.title ?? seed?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .task { await load(refresh: false) }
+        .task {   // live server-queue state for this manga's chapters
+            while !Task.isCancelled {
+                if let s = try? await api.downloadStatus() {
+                    let next = Dictionary(uniqueKeysWithValues: s.queue.map { ($0.chapter.id, $0) })
+                    for i in chapters.indices where queue[chapters[i].id] != nil && next[chapters[i].id] == nil { chapters[i].isDownloaded = true }
+                    queue = next
+                }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
         .refreshable { await load(refresh: true) }
         .sheet(isPresented: $showCats) { if let m = manga { MangaCategoriesSheet(manga: m, cats: cats) { Task { await load(refresh: false) } } } }
         .overlay(alignment: .bottom) { if !toast.isEmpty { Text(toast).padding(10).background(.ultraThinMaterial, in: Capsule()).padding(.bottom, selecting ? 70 : 20) } }
@@ -96,13 +107,20 @@ struct MangaView: View {
             }.disabled(selecting)
             Spacer()
             if let p = device.progress[c.id] { ProgressView(value: p).frame(width: 40) }
+            if let d = queue[c.id] {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(d.state == "DOWNLOADING" ? "\(Int(d.progress * 100))%" : d.state == "ERROR" ? "retrying" : "queued").font(.caption2).foregroundStyle(.secondary)
+                    ProgressView(value: d.progress).frame(width: 56)
+                }
+            }
             if onDevice { Image(systemName: "iphone").foregroundStyle(.orange) }
-            if c.isDownloaded { Image(systemName: "checkmark.icloud").foregroundStyle(.green) }
+            if c.isDownloaded && queue[c.id] == nil { Image(systemName: "checkmark.icloud").foregroundStyle(.green) }
             Menu {
                 Button { device.enqueue(m, [c]) } label: { Label(onDevice ? "On this device" : "Download to this device", systemImage: "iphone.and.arrow.down") }.disabled(onDevice)
                 if onDevice { Button(role: .destructive) { device.remove(c.id) } label: { Label("Remove from device", systemImage: "iphone.slash") } }
-                if c.isDownloaded { Button(role: .destructive) { Task { try? await api.deleteDownloads([c.id]); await load(refresh: false) } } label: { Label("Delete from server", systemImage: "icloud.slash") } }
-                else { Button { Task { try? await api.download([c.id], mangaId: m.id); flash("Queued on server") } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") } }
+                if queue[c.id] != nil { Button(role: .destructive) { Task { try? await api.dequeue([c.id]); queue[c.id] = nil } } label: { Label("Remove from server queue", systemImage: "xmark.circle") } }
+                else if c.isDownloaded { Button(role: .destructive) { Task { try? await api.deleteDownloads([c.id]); await load(refresh: false) } } label: { Label("Delete from server", systemImage: "icloud.slash") } }
+                else { Button { Task { try? await api.download([c.id], mangaId: m.id); queue[c.id] = DownloadItem(position: 0, progress: 0, state: "QUEUED", tries: 0, chapter: Ref(id: c.id, name: c.name), manga: DownloadItem.Ref2(id: m.id, title: m.title)); flash("Queued on server") } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") } }
                 Divider()
                 Button { Task { try? await api.markRead([c.id], read: !c.isRead, lastPage: c.isRead ? 0 : nil); await load(refresh: false) } } label: { Label(c.isRead ? "Mark unread" : "Mark read", systemImage: c.isRead ? "eye.slash" : "eye") }
                 Button { Task { let ids = chapters.filter { $0.sourceOrder > c.sourceOrder }.map { $0.id }; if !ids.isEmpty { try? await api.markRead(ids, read: true) }; await load(refresh: false) } } label: { Label("Mark previous as read", systemImage: "eye.fill") }

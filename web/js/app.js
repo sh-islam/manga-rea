@@ -154,6 +154,15 @@
     const m = data.manga; const chapters = data.chapters.slice().sort((a, b) => a.sourceOrder - b.sourceOrder);
     const sel = new Set(); let selecting = false;
     const unread = chapters.filter(c => !c.isRead); const notDl = chapters.filter(c => !c.isDownloaded);
+    let dlState = {};   // chapter id -> server queue entry {state, progress}
+    const pollDl = async () => {
+      try { const s = await q.downloadStatus(); const next = {}; let changed = false;
+        s.queue.forEach(d => { next[d.chapter.id] = d; });
+        for (const c of chapters) { if (dlState[c.id] && !next[c.id]) { c.isDownloaded = true; changed = true; } }
+        dlState = next; renderCh(); if (changed) view.querySelector('#onsrv').textContent = chapters.filter(c => c.isDownloaded).length + ' on server';
+      } catch (_) { }
+    };
+    clearInterval(mangaTimer); mangaTimer = setInterval(() => { if (location.hash === `#/manga/${id}`) pollDl(); else clearInterval(mangaTimer); }, 2500);
     const resume = m.lastReadChapter && chapters.find(c => c.id === m.lastReadChapter.id) ? m.lastReadChapter : (unread.length ? unread[unread.length - 1] : chapters[chapters.length - 1]);
     view.innerHTML = `<div class="detail"><div><a class="cover" href="${esc(img(m.thumbnailUrl))}" target="_blank"><img src="${esc(img(m.thumbnailUrl))}" alt=""></a></div>
       <div><h1 style="margin-top:0">${esc(m.title)}</h1><div class="muted">${esc(m.author || '')}${m.artist && m.artist !== m.author ? ' · ' + esc(m.artist) : ''}</div>
@@ -162,7 +171,7 @@
       ${resume ? `<a class="btn primary" href="#/read/${m.id}/${resume.id}">▶ ${m.lastReadChapter ? 'Resume' : 'Start'}</a>` : ''}</p>
       <div class="desc" id="desc">${esc(m.description || '')}</div>${(m.description || '').length > 300 ? '<a id="more" href="javascript:void 0" class="small">more</a>' : ''}
       <div class="chips" style="margin-top:8px">${(m.genre || []).map(g => `<span class="chip">${esc(g)}</span>`).join('')}</div></div></div>
-      <div class="row between" style="margin-top:16px"><h2 style="margin:0">${chapters.length} chapters <span class="muted small">${unread.length} unread · ${chapters.length - notDl.length} on server</span></h2>
+      <div class="row between" style="margin-top:16px"><h2 style="margin:0">${chapters.length} chapters <span class="muted small">${unread.length} unread · <span id="onsrv">${chapters.length - notDl.length} on server</span></span></h2>
       <div class="row"><button id="dl">⇣ Download</button><button id="selm">Select</button><button id="ord" title="Chapter order"></button></div></div>
       <div id="selbar" class="row card" style="display:none"><span id="selc"></span><button data-a="dl">Download</button><button data-a="deldl">Delete download</button><button data-a="read">Mark read</button><button data-a="unread">Mark unread</button><button data-a="all">All</button><button data-a="none">None</button></div>
       <div class="list" id="chs"></div>`;
@@ -171,14 +180,16 @@
     const renderCh = () => { const asc = localStorage.getItem('chapters.asc') === '1'; ordBtn.textContent = asc ? '↑ Oldest first' : '↓ Newest first';
       chs.innerHTML = (asc ? chapters.slice() : chapters.slice().reverse()).map(c => `<div class="it ${c.isRead ? 'read' : ''}" data-id="${c.id}">${selecting ? `<input type="checkbox" ${sel.has(c.id) ? 'checked' : ''}>` : ''}
       <a class="m" href="#/read/${m.id}/${c.id}"><div>${c.isBookmarked ? '🔖 ' : ''}${esc(c.name)}</div><div class="muted small">${date(c.uploadDate)}${c.scanlator ? ' · ' + esc(c.scanlator) : ''}${!c.isRead && c.lastPageRead ? ` · page ${c.lastPageRead + 1}` : ''}</div></a>
-      <button class="ic ${c.isDownloaded ? 'on' : ''}" data-dl="${c.id}" title="${c.isDownloaded ? 'On server (click to delete)' : 'Download to server'}">${c.isDownloaded ? '✓' : '⇣'}</button>
+      ${dlState[c.id] ? `<span class="small muted" style="min-width:90px"><span>${dlState[c.id].state === 'DOWNLOADING' ? 'downloading ' + Math.round(dlState[c.id].progress * 100) + '%' : dlState[c.id].state === 'ERROR' ? 'error, retrying' : 'queued'}</span><div class="bar" style="margin-top:3px"><i style="width:${Math.round((dlState[c.id].progress || 0) * 100)}%"></i></div></span><button class="ic" data-dq="${c.id}" title="Remove from queue">✕</button>` :
+      `<button class="ic ${c.isDownloaded ? 'on' : ''}" data-dl="${c.id}" title="${c.isDownloaded ? 'On server (click to delete)' : 'Download to server'}">${c.isDownloaded ? '✓' : '⇣'}</button>`}
       <button class="ic" data-menu="${c.id}" title="More">⋯</button></div>`).join(''); };
     renderCh();
     ordBtn.onclick = () => { localStorage.setItem('chapters.asc', localStorage.getItem('chapters.asc') === '1' ? '0' : '1'); renderCh(); };
     chs.onclick = async (e) => {
       const it = e.target.closest('.it'); if (!it) return; const id = Number(it.dataset.id); const c = chapters.find(x => x.id === id);
       if (e.target.matches('input[type=checkbox]') || (selecting && !e.target.closest('button'))) { e.preventDefault(); sel.has(id) ? sel.delete(id) : sel.add(id); it.querySelector('input').checked = sel.has(id); view.querySelector('#selc').textContent = sel.size + ' selected'; return; }
-      if (e.target.dataset.dl) { if (c.isDownloaded) { if (confirm('Delete this chapter from the server?')) { await q.deleteDownloads([id]); c.isDownloaded = false; renderCh(); } } else { await q.download([id], m.id); c.isDownloaded = true; m.inLibrary = true; toast('Queued on server' + (m.inLibrary ? '' : ' · added to library')); renderCh(); } }
+      if (e.target.dataset.dq) { await q.dequeue([id]); delete dlState[id]; renderCh(); return; }
+      if (e.target.dataset.dl) { if (c.isDownloaded) { if (confirm('Delete this chapter from the server?')) { await q.deleteDownloads([id]); c.isDownloaded = false; renderCh(); } } else { const was = m.inLibrary; await q.download([id], m.id); m.inLibrary = true; dlState[id] = { state: 'QUEUED', progress: 0 }; toast('Queued on server' + (was ? '' : ' · added to library')); renderCh(); setTimeout(pollDl, 1500); } }
       if (e.target.dataset.menu) chapterMenu(c, chapters, () => renderCh());
     };
     view.querySelector('#lib').onclick = async () => { await q.setLibrary(m.id, !m.inLibrary); mangaView(id); toast(m.inLibrary ? 'Removed from library' : 'Added to library'); };
@@ -193,7 +204,7 @@
       const s = sheet(`<h2>Download to server</h2><p class="row"><button data-n="1">Next 1</button><button data-n="5">Next 5</button><button data-n="10">Next 10</button><button data-n="25">Next 25</button></p><p class="row"><button data-n="unread">All unread (${unread.length})</button><button data-n="all" class="primary">Everything not on server (${notDl.length})</button></p>`);
       s.onclick = async e => { const n = e.target.dataset.n; if (!n) return; let ids;
         if (n === 'all') ids = notDl.map(c => c.id); else if (n === 'unread') ids = unread.filter(c => !c.isDownloaded).map(c => c.id); else ids = unread.filter(c => !c.isDownloaded).slice(0, Number(n)).map(c => c.id);
-        if (ids.length) await q.download(ids, m.id); s.remove(); toast(ids.length + ' chapters queued'); setTimeout(() => mangaView(id), 800); };
+        if (ids.length) await q.download(ids, m.id); s.remove(); toast(ids.length + ' chapters queued'); ids.forEach(i => { dlState[i] = { state: 'QUEUED', progress: 0 }; }); m.inLibrary = true; renderCh(); setTimeout(pollDl, 1500); };
     };
     view.querySelector('#selm').onclick = () => { selecting = !selecting; sel.clear(); view.querySelector('#selbar').style.display = selecting ? '' : 'none'; view.querySelector('#selc').textContent = '0 selected'; renderCh(); };
     view.querySelector('#selbar').onclick = async e => { const a = e.target.dataset.a; if (!a) return; const ids = [...sel];
@@ -270,6 +281,7 @@
 
   // ---------------- downloads queue
   let dlTimer = null;
+  let mangaTimer = null;
   async function downloadsView() {
     nav('downloads'); clearInterval(dlTimer);
     const render = async () => {
@@ -375,7 +387,7 @@
 
   // ---------------- router
   async function route() {
-    document.body.classList.remove('reading'); if (window._readerKeys) { document.removeEventListener('keydown', window._readerKeys); window._readerKeys = null; } clearInterval(dlTimer);
+    document.body.classList.remove('reading'); if (window._readerKeys) { document.removeEventListener('keydown', window._readerKeys); window._readerKeys = null; } clearInterval(dlTimer); clearInterval(mangaTimer);
     const h = location.hash.replace(/^#\/?/, ''); const [r, a, b] = h.split('/');
     if (!Kumo.loggedIn() && r !== 'login') return loginView(location.hash);
     try {
