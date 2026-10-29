@@ -1,0 +1,4 @@
+version: 1
+bundleID: com.shad.kumo
+infoPath: Resources/Info.plist
+iconPath: Resources/AppIcon.png

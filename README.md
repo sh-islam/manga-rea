@@ -46,8 +46,32 @@ web/           static web app (GitHub Pages)
 App/           xtool iOS project
 ```
 
+## Setting it up (one time, run by you)
+
+1. `bash server/deploy.sh` — installs the backend (Suwayomi + file service) as services on shad-server,
+   bound to localhost. Login is `shad` / the password in `server/.env`.
+2. `bash server/expose.sh` — Tailscale Funnel: https://shad-server.elf-tarpon.ts.net:8443 → backend, and
+   `/files` → file service. Valid certificate, reachable from anywhere; nothing works without the login.
+3. `bash publish.sh` — creates the public GitHub repo `kumo` and turns on Pages; the web app then lives at
+   https://sh-islam.github.io/kumo/ and redeploys on every push that touches `web/`.
+4. `common\ship.cmd manga-rea` with the phone plugged in — installs the iOS app.
+
 ## Status
 
-- 2026-10-29: references downloaded; backend config written; server has Java 21, 4567 free.
-  Next: `bash server/deploy.sh` (installs the service) and `bash server/expose.sh` (public HTTPS), then the
-  web app, then the iOS app.
+- 2026-10-29: backend verified end to end on the server with a transient run (MangaDex extension installed
+  from keiyoushi, search, chapters, pages, one chapter downloaded to
+  `/home/shad/kumo/manga/mangas/MangaDex (EN)/<title>/<scanlator>_<chapter>.cbz`, file service upload/move/
+  range-download, Local source picks uploads up; ~490 MB RSS). Web app walked through in headless Chrome
+  (`node web/test/e2e.mjs`): login, library, browse, source search, manga, reader (webtoon + paged), updates,
+  downloads, files, extensions, settings; no JS errors. iOS app compiles (`ios-build.sh`); not yet on the
+  phone. Services, Funnel and the GitHub repo are waiting on the four steps above.
+
+## What the iOS app does
+
+Library (categories, filters, badges: unread / on server / on device) · Browse (search every source, per-source
+popular/latest/search with the extension's filters) · Manga (add to library, categories, chapter list with
+download to server / to this device, mark read, bookmarks, select mode) · Reader (webtoon, paged LTR/RTL,
+pinch zoom, progress synced to the server, reads device copies offline) · Updates · Downloads (server queue +
+device storage) · More: History, Files on the server (browse, new folder, upload, delete), Files on this device
+(CBZ/ZIP library with its own reader), Web Server (Panels-style drop page at http://<phone-ip>:8787/),
+Extensions & repos, Settings. Same account and data as the web app.
