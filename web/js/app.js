@@ -93,7 +93,7 @@
       <div class="grid" id="grid"></div><p id="more" style="text-align:center"></p>`;
     const grid = view.querySelector('#grid');
     const load = async (reset) => {
-      if (st.loading) return; st.loading = true;
+      if (st.loading || !grid.isConnected) return; st.loading = true;
       if (reset) { st.page = 1; st.items = []; grid.innerHTML = '<p class="muted">Loading…</p>'; }
       view.querySelector('#more').innerHTML = '<span class="muted">Loading…</span>';
       try {
