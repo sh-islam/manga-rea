@@ -1,8 +1,13 @@
 import SwiftUI
 
-struct ReaderTarget: Hashable { let manga: Manga; let chapters: [Chapter]; let chapterId: Int
+/// What the reader opens. `chapters` may be empty (e.g. from Updates/History); the reader then loads them.
+struct ReaderTarget: Hashable {
+    let manga: Manga; let chapters: [Chapter]; let chapterId: Int
     static func == (a: ReaderTarget, b: ReaderTarget) -> Bool { a.chapterId == b.chapterId && a.manga.id == b.manga.id }
-    func hash(into h: inout Hasher) { h.combine(manga.id); h.combine(chapterId) } }
+    func hash(into h: inout Hasher) { h.combine(manga.id); h.combine(chapterId) }
+}
+
+func isCancellation(_ e: Error) -> Bool { e is CancellationError || (e as? URLError)?.code == .cancelled }
 
 // MARK: - Manga details + chapters
 
@@ -26,57 +31,56 @@ struct MangaView: View {
 
     var sorted: [Chapter] { ascending ? chapters.sorted { $0.sourceOrder > $1.sourceOrder } : chapters.sorted { $0.sourceOrder < $1.sourceOrder } }   // source order 0 = latest
     var unread: [Chapter] { chapters.filter { !$0.isRead } }
+    var oldestFirstUnread: [Chapter] { unread.sorted { $0.sourceOrder > $1.sourceOrder } }
     var resume: Chapter? {
-        if let l = manga?.lastReadChapter, let c = chapters.first(where: { $0.id == l.id }) { return c }
-        return unread.max(by: { $0.sourceOrder < $1.sourceOrder }) ?? chapters.max(by: { $0.sourceOrder < $1.sourceOrder })
+        if let l = manga?.lastReadChapter, let c = chapters.first(where: { $0.id == l.id }), !c.isRead || c.lastPageRead < c.pageCount - 1 { return c }
+        return oldestFirstUnread.first ?? chapters.max(by: { $0.sourceOrder < $1.sourceOrder })
     }
+    var onServer: Int { chapters.filter { $0.isDownloaded }.count }
+    var onDevice: Int { chapters.filter { device.has($0.id) }.count }
 
     var body: some View {
         List {
             if let m = manga ?? seed {
                 Section {
-                    HStack(alignment: .top, spacing: 12) {
-                        Cover(manga: m).frame(width: 110)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(m.title).font(.headline)
-                            if let a = m.author, !a.isEmpty { Text(a).font(.subheadline).foregroundStyle(.secondary) }
-                            Text([m.status?.capitalized, m.source?.displayName].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
-                            HStack {
-                                Button { Task { try? await api.setLibrary(m.id, !m.inLibrary); await load(refresh: false) } } label: { Label(m.inLibrary ? "In library" : "Add", systemImage: m.inLibrary ? "checkmark" : "plus") }.buttonStyle(.borderedProminent).tint(m.inLibrary ? .gray : .accentColor)
-                                if m.inLibrary { Button { Task { cats = (try? await api.categories()) ?? []; showCats = true } } label: { Image(systemName: "folder") }.buttonStyle(.bordered) }
-                                Button { Task { await load(refresh: true) } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.bordered)
-                            }.padding(.top, 4)
-                        }
-                    }.listRowSeparator(.hidden)
+                    header(m)
+                    actionRow(m)
                     if let d = m.description, !d.isEmpty {
-                        Text(d).font(.subheadline).lineLimit(showDesc ? nil : 4).onTapGesture { showDesc.toggle() }
+                        Text(d).font(.subheadline).foregroundStyle(.secondary).lineLimit(showDesc ? nil : 3)
+                            .contentShape(Rectangle()).onTapGesture { withAnimation { showDesc.toggle() } }
                     }
                     if let g = m.genre, !g.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) { HStack { ForEach(g, id: \.self) { Chip(text: $0, on: false) {} } } }.listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                        ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 6) { ForEach(g, id: \.self) { Chip(text: $0, on: false) {} } } }
+                            .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 6, trailing: 16))
                     }
                     if let r = resume {
                         NavigationLink(value: ReaderTarget(manga: m, chapters: chapters, chapterId: r.id)) {
-                            Label(m.lastReadChapter == nil ? "Start reading: \(r.name)" : "Resume: \(r.name)", systemImage: "play.fill").foregroundStyle(Color.accentColor)
+                            HStack { Image(systemName: "play.fill"); Text(m.lastReadChapter == nil || r.lastPageRead == 0 ? "Start reading" : "Continue reading").bold(); Spacer(); Text(r.name).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                         }
+                        .listRowBackground(Color.accentColor.opacity(0.15))
                     }
                 }
+                .listRowSeparator(.hidden)
+
                 Section {
-                    if !error.isEmpty { ErrorBanner(text: error) }
-                    if loading && chapters.isEmpty { ProgressView() }
-                    ForEach(sorted) { c in chapterRow(c, m) }
-                } header: {
                     HStack {
-                        Text("\(chapters.count) chapters · \(unread.count) unread")
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(chapters.count) chapters").font(.headline)
+                            Text("\(unread.count) unread · \(onServer) on server · \(onDevice) on this phone").font(.caption).foregroundStyle(.secondary)
+                        }
                         Spacer()
-                        Menu { downloadMenu(m) } label: { Label("Download", systemImage: "arrow.down.circle") }
-                        Button(selecting ? "Done" : "Select") { selecting.toggle(); sel.removeAll() }
-                        Button { ascending.toggle() } label: { Image(systemName: ascending ? "arrow.up" : "arrow.down") }.help(ascending ? "Oldest first" : "Newest first")
-                    }.textCase(nil)
+                        Button { withAnimation { ascending.toggle() } } label: { Image(systemName: ascending ? "arrow.up" : "arrow.down").frame(width: 32, height: 32) }.buttonStyle(.bordered).help(ascending ? "Oldest first" : "Newest first")
+                        Button(selecting ? "Done" : "Select") { withAnimation { selecting.toggle(); sel.removeAll() } }.buttonStyle(.bordered)
+                    }
+                    .listRowSeparator(.hidden)
+                    if !error.isEmpty { ErrorBanner(text: error) }
+                    if loading && chapters.isEmpty { HStack { Spacer(); ProgressView(); Spacer() } }
+                    if !loading && chapters.isEmpty && error.isEmpty { Text("No chapters from this source.").foregroundStyle(.secondary) }
+                    ForEach(sorted) { c in chapterRow(c, m) }
                 }
             }
         }
         .listStyle(.plain)
-        .kumoDestinations()
         .navigationTitle(manga?.title ?? seed?.title ?? "").navigationBarTitleDisplayMode(.inline)
         .task { await load(refresh: false) }
         .task {   // live server-queue state for this manga's chapters
@@ -91,81 +95,165 @@ struct MangaView: View {
         }
         .refreshable { await load(refresh: true) }
         .sheet(isPresented: $showCats) { if let m = manga { MangaCategoriesSheet(manga: m, cats: cats) { Task { await load(refresh: false) } } } }
-        .overlay(alignment: .bottom) { if !toast.isEmpty { Text(toast).padding(10).background(.ultraThinMaterial, in: Capsule()).padding(.bottom, selecting ? 70 : 20) } }
-        .safeAreaInset(edge: .bottom) { if selecting, let m = manga { selectionBar(m) } }
+        .overlay(alignment: .bottom) { if !toast.isEmpty { Text(toast).font(.footnote).padding(10).background(.ultraThinMaterial, in: Capsule()).padding(.bottom, selecting ? 70 : 20) } }
+        .safeAreaInset(edge: .bottom) { if selecting, let m = manga ?? seed { selectionBar(m) } }
     }
 
+    // MARK: header + actions
+    @ViewBuilder func header(_ m: Manga) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Cover(manga: m).frame(width: 118)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(m.title).font(.title3.bold()).lineLimit(4)
+                if let a = m.author, !a.isEmpty { Label(a, systemImage: "person").font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                if let s = m.status, s != "UNKNOWN" { Label(s.replacingOccurrences(of: "_", with: " ").capitalized, systemImage: "clock").font(.subheadline).foregroundStyle(.secondary) }
+                if let src = m.source { Label(src.displayName, systemImage: "globe").font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder func actionRow(_ m: Manga) -> some View {
+        HStack(spacing: 8) {
+            Button { Task { try? await api.setLibrary(m.id, !m.inLibrary); await load(refresh: false); flash(m.inLibrary ? "Removed from library" : "Added to library") } } label: {
+                ActionLabel(icon: m.inLibrary ? "heart.fill" : "heart", text: m.inLibrary ? "In library" : "Add to library", tint: m.inLibrary ? .pink : .primary)
+            }
+            Menu { downloadMenu(m) } label: { ActionLabel(icon: "arrow.down.circle", text: "Download", tint: .primary) }
+            if m.inLibrary {
+                Button { Task { cats = (try? await api.categories()) ?? []; showCats = true } } label: { ActionLabel(icon: "folder", text: "Category", tint: .primary) }
+            } else if let u = m.realUrl, let url = URL(string: u) {
+                Link(destination: url) { ActionLabel(icon: "safari", text: "Website", tint: .primary) }
+            } else {
+                Button { Task { await load(refresh: true) } } label: { ActionLabel(icon: "arrow.clockwise", text: "Refresh", tint: .primary) }
+            }
+        }
+        .buttonStyle(.bordered)
+        .padding(.top, 4)
+    }
+
+    // MARK: chapter row
     @ViewBuilder func chapterRow(_ c: Chapter, _ m: Manga) -> some View {
         let onDevice = device.has(c.id)
-        HStack {
-            if selecting { Image(systemName: sel.contains(c.id) ? "checkmark.circle.fill" : "circle").foregroundStyle(Color.accentColor).onTapGesture { toggle(c.id) } }
+        HStack(spacing: 10) {
+            if selecting {
+                Image(systemName: sel.contains(c.id) ? "checkmark.circle.fill" : "circle").font(.title3).foregroundStyle(Color.accentColor)
+            }
             NavigationLink(value: ReaderTarget(manga: m, chapters: chapters, chapterId: c.id)) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text((c.isBookmarked ? "🔖 " : "") + c.name).foregroundStyle(c.isRead ? .secondary : .primary)
-                    Text([fmtDate(c.uploadDate), c.scanlator, (!c.isRead && c.lastPageRead > 0) ? "page \(c.lastPageRead + 1)" : nil].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
-                }
-            }.disabled(selecting)
-            Spacer()
-            if let p = device.progress[c.id] { ProgressView(value: p).frame(width: 40) }
-            if let d = queue[c.id] {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(d.state == "DOWNLOADING" ? "\(Int(d.progress * 100))%" : d.state == "ERROR" ? "retrying" : "queued").font(.caption2).foregroundStyle(.secondary)
-                    ProgressView(value: d.progress).frame(width: 56)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 4) {
+                        if c.isBookmarked { Image(systemName: "bookmark.fill").font(.caption).foregroundStyle(Color.accentColor) }
+                        Text(c.name).foregroundStyle(c.isRead ? .secondary : .primary).lineLimit(1)
+                    }
+                    Text([fmtDate(c.uploadDate), c.scanlator, (!c.isRead && c.lastPageRead > 0) ? "page \(c.lastPageRead + 1)" : nil].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            if onDevice { Image(systemName: "iphone").foregroundStyle(.orange) }
-            if c.isDownloaded && queue[c.id] == nil { Image(systemName: "checkmark.icloud").foregroundStyle(.green) }
-            Menu {
-                Button { device.enqueue(m, [c]) } label: { Label(onDevice ? "On this device" : "Download to this device", systemImage: "iphone.and.arrow.down") }.disabled(onDevice)
-                if onDevice { Button(role: .destructive) { device.remove(c.id) } label: { Label("Remove from device", systemImage: "iphone.slash") } }
-                if queue[c.id] != nil { Button(role: .destructive) { Task { try? await api.dequeue([c.id]); queue[c.id] = nil } } label: { Label("Remove from server queue", systemImage: "xmark.circle") } }
-                else if c.isDownloaded { Button(role: .destructive) { Task { try? await api.deleteDownloads([c.id]); await load(refresh: false) } } label: { Label("Delete from server", systemImage: "icloud.slash") } }
-                else { Button { Task { try? await api.download([c.id], mangaId: m.id); queue[c.id] = DownloadItem(position: 0, progress: 0, state: "QUEUED", tries: 0, chapter: Ref(id: c.id, name: c.name), manga: DownloadItem.Ref2(id: m.id, title: m.title)); flash("Queued on server") } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") } }
-                Divider()
-                Button { Task { try? await api.markRead([c.id], read: !c.isRead, lastPage: c.isRead ? 0 : nil); await load(refresh: false) } } label: { Label(c.isRead ? "Mark unread" : "Mark read", systemImage: c.isRead ? "eye.slash" : "eye") }
-                Button { Task { let ids = chapters.filter { $0.sourceOrder > c.sourceOrder }.map { $0.id }; if !ids.isEmpty { try? await api.markRead(ids, read: true) }; await load(refresh: false) } } label: { Label("Mark previous as read", systemImage: "eye.fill") }
-                Button { Task { try? await api.bookmark([c.id], !c.isBookmarked); await load(refresh: false) } } label: { Label(c.isBookmarked ? "Remove bookmark" : "Bookmark", systemImage: "bookmark") }
-            } label: { Image(systemName: "ellipsis.circle").padding(.leading, 4) }
+            .disabled(selecting)
+            Spacer(minLength: 4)
+            if let p = device.progress[c.id] {
+                VStack(alignment: .trailing, spacing: 2) { Text("to phone \(Int(p * 100))%").font(.caption2).foregroundStyle(.orange); ProgressView(value: p).frame(width: 56).tint(.orange) }
+            } else if let d = queue[c.id] {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(d.state == "DOWNLOADING" ? "server \(Int(d.progress * 100))%" : d.state == "ERROR" ? "retrying" : "queued").font(.caption2).foregroundStyle(.secondary)
+                    ProgressView(value: d.progress).frame(width: 56)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    if onDevice { Image(systemName: "iphone").foregroundStyle(.orange).help("On this phone") }
+                    if c.isDownloaded { Image(systemName: "checkmark.icloud").foregroundStyle(.green).help("On the server") }
+                }
+            }
+            if !selecting {
+                Menu {
+                    Section("This phone") {
+                        if onDevice { Button(role: .destructive) { device.remove(c.id) } label: { Label("Remove from this phone", systemImage: "iphone.slash") } }
+                        else { Button { device.enqueue(m, [c]); flash("Downloading to this phone") } label: { Label("Download to this phone", systemImage: "iphone.and.arrow.down") } }
+                    }
+                    Section("Server") {
+                        if queue[c.id] != nil { Button(role: .destructive) { Task { try? await api.dequeue([c.id]); queue[c.id] = nil } } label: { Label("Remove from server queue", systemImage: "xmark.circle") } }
+                        else if c.isDownloaded { Button(role: .destructive) { Task { try? await api.deleteDownloads([c.id]); await load(refresh: false) } } label: { Label("Delete from server", systemImage: "icloud.slash") } }
+                        else { Button { Task { try? await api.download([c.id], mangaId: m.id); queue[c.id] = DownloadItem(position: 0, progress: 0, state: "QUEUED", tries: 0, chapter: Ref(id: c.id, name: c.name), manga: DownloadItem.Ref2(id: m.id, title: m.title)); flash("Queued on server") } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") } }
+                    }
+                    Section("Reading") {
+                        Button { Task { try? await api.markRead([c.id], read: !c.isRead, lastPage: c.isRead ? 0 : nil); await load(refresh: false) } } label: { Label(c.isRead ? "Mark unread" : "Mark read", systemImage: c.isRead ? "eye.slash" : "eye") }
+                        Button { Task { let ids = chapters.filter { $0.sourceOrder > c.sourceOrder }.map { $0.id }; if !ids.isEmpty { try? await api.markRead(ids, read: true) }; await load(refresh: false) } } label: { Label("Mark previous as read", systemImage: "eye.fill") }
+                        Button { Task { try? await api.bookmark([c.id], !c.isBookmarked); await load(refresh: false) } } label: { Label(c.isBookmarked ? "Remove bookmark" : "Bookmark", systemImage: "bookmark") }
+                    }
+                } label: { Image(systemName: "ellipsis").frame(width: 28, height: 28) }
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture { if selecting { toggle(c.id) } }
     }
     func toggle(_ id: Int) { if sel.contains(id) { sel.remove(id) } else { sel.insert(id) } }
 
+    // MARK: download menu: two explicit destinations
     @ViewBuilder func downloadMenu(_ m: Manga) -> some View {
         let notOnServer = chapters.filter { !$0.isDownloaded }
-        let unreadNext = unread.sorted { $0.sourceOrder > $1.sourceOrder }   // oldest unread first
-        Section("To the server") {
-            ForEach([1, 5, 10, 25], id: \.self) { n in Button("Next \(n) unread") { Task { let ids = Array(unreadNext.filter { !$0.isDownloaded }.prefix(n)).map { $0.id }; try? await api.download(ids, mangaId: m.id); flash("\(ids.count) queued on server") } } }
-            Button("All unread (\(unread.count))") { Task { let ids = unread.filter { !$0.isDownloaded }.map { $0.id }; try? await api.download(ids, mangaId: m.id); flash("\(ids.count) queued on server") } }
+        let unreadNotOnServer = oldestFirstUnread.filter { !$0.isDownloaded }
+        let unreadNotOnDevice = oldestFirstUnread.filter { !device.has($0.id) }
+        let allOldestFirst = chapters.sorted { $0.sourceOrder > $1.sourceOrder }
+        Menu {
+            ForEach([1, 5, 10, 25], id: \.self) { n in Button("Next \(n) unread") { Task { let ids = Array(unreadNotOnServer.prefix(n)).map { $0.id }; try? await api.download(ids, mangaId: m.id); flash("\(ids.count) queued on server") } } }
+            Button("All unread (\(unreadNotOnServer.count))") { Task { let ids = unreadNotOnServer.map { $0.id }; try? await api.download(ids, mangaId: m.id); flash("\(ids.count) queued on server") } }
             Button("Everything (\(notOnServer.count))") { Task { try? await api.download(notOnServer.map { $0.id }, mangaId: m.id); flash("\(notOnServer.count) queued on server") } }
-        }
-        Section("To this device") {
-            ForEach([1, 5, 10], id: \.self) { n in Button("Next \(n) unread") { device.enqueue(m, Array(unreadNext.prefix(n))); flash("Downloading to device") } }
-            Button("All unread (\(unread.count))") { device.enqueue(m, unreadNext); flash("Downloading to device") }
-            Button("Everything (\(chapters.count))") { device.enqueue(m, chapters.sorted { $0.sourceOrder > $1.sourceOrder }); flash("Downloading to device") }
-        }
+        } label: { Label("To the server (stays there, read anywhere)", systemImage: "icloud.and.arrow.down") }
+        Menu {
+            ForEach([1, 5, 10, 25], id: \.self) { n in Button("Next \(n) unread") { device.enqueue(m, Array(unreadNotOnDevice.prefix(n))); flash("Downloading to this phone") } }
+            Button("All unread (\(unreadNotOnDevice.count))") { device.enqueue(m, unreadNotOnDevice); flash("Downloading to this phone") }
+            Button("Everything (\(chapters.count))") { device.enqueue(m, allOldestFirst); flash("Downloading to this phone") }
+        } label: { Label("To this phone (offline copy)", systemImage: "iphone.and.arrow.down") }
     }
+
     @ViewBuilder func selectionBar(_ m: Manga) -> some View {
-        HStack {
-            Text("\(sel.count) selected").font(.footnote)
-            Spacer()
-            Button("All") { sel = Set(chapters.map { $0.id }) }
-            Menu("Actions") {
-                Button { Task { try? await api.download(Array(sel), mangaId: m.id); flash("Queued on server"); selecting = false } } label: { Label("Download to server", systemImage: "icloud.and.arrow.down") }
-                Button { device.enqueue(m, chapters.filter { sel.contains($0.id) }.sorted { $0.sourceOrder > $1.sourceOrder }); selecting = false } label: { Label("Download to this device", systemImage: "iphone.and.arrow.down") }
-                Button { Task { try? await api.markRead(Array(sel), read: true); await load(refresh: false); selecting = false } } label: { Label("Mark read", systemImage: "eye") }
-                Button { Task { try? await api.markRead(Array(sel), read: false, lastPage: 0); await load(refresh: false); selecting = false } } label: { Label("Mark unread", systemImage: "eye.slash") }
-                Button(role: .destructive) { Task { try? await api.deleteDownloads(Array(sel)); await load(refresh: false); selecting = false } } label: { Label("Delete from server", systemImage: "icloud.slash") }
-                Button(role: .destructive) { for id in sel { device.remove(id) }; selecting = false } label: { Label("Remove from device", systemImage: "iphone.slash") }
-            }.disabled(sel.isEmpty)
-        }.padding(.horizontal).padding(.vertical, 8).background(.bar)
+        VStack(spacing: 6) {
+            HStack {
+                Text("\(sel.count) selected").font(.footnote.bold())
+                Spacer()
+                Button("All") { sel = Set(chapters.map { $0.id }) }.font(.footnote)
+                Button("Unread") { sel = Set(unread.map { $0.id }) }.font(.footnote)
+                Button("None") { sel.removeAll() }.font(.footnote)
+            }
+            HStack(spacing: 8) {
+                Button { Task { try? await api.download(Array(sel), mangaId: m.id); flash("\(sel.count) queued on server"); selecting = false } } label: { ActionLabel(icon: "icloud.and.arrow.down", text: "To server", tint: .primary) }
+                Button { device.enqueue(m, chapters.filter { sel.contains($0.id) }.sorted { $0.sourceOrder > $1.sourceOrder }); flash("Downloading to this phone"); selecting = false } label: { ActionLabel(icon: "iphone.and.arrow.down", text: "To phone", tint: .primary) }
+                Button { Task { try? await api.markRead(Array(sel), read: true); await load(refresh: false); selecting = false } } label: { ActionLabel(icon: "eye", text: "Read", tint: .primary) }
+                Menu {
+                    Button { Task { try? await api.markRead(Array(sel), read: false, lastPage: 0); await load(refresh: false); selecting = false } } label: { Label("Mark unread", systemImage: "eye.slash") }
+                    Button { Task { try? await api.bookmark(Array(sel), true); await load(refresh: false); selecting = false } } label: { Label("Bookmark", systemImage: "bookmark") }
+                    Button(role: .destructive) { Task { try? await api.deleteDownloads(Array(sel)); await load(refresh: false); selecting = false } } label: { Label("Delete from server", systemImage: "icloud.slash") }
+                    Button(role: .destructive) { for id in sel { device.remove(id) }; selecting = false } label: { Label("Remove from this phone", systemImage: "iphone.slash") }
+                } label: { ActionLabel(icon: "ellipsis", text: "More", tint: .primary) }
+            }
+            .buttonStyle(.bordered)
+            .disabled(sel.isEmpty)
+        }
+        .padding(.horizontal).padding(.vertical, 8).background(.bar)
     }
+
     func flash(_ s: String) { toast = s; Task { try? await Task.sleep(nanoseconds: 1_800_000_000); toast = "" } }
+
+    /// Loads in a detached task so SwiftUI re-creating the view (which cancels `.task`) never surfaces as "cancelled".
     func load(refresh: Bool) async {
         loading = true
-        do { let d = try await api.manga(mangaId, refresh: refresh); manga = d.manga; chapters = d.chapters; error = "" } catch { self.error = error.localizedDescription }
+        let id = mangaId
+        let result = await Task.detached { () -> Result<API.MangaDetail, Error> in
+            do { return .success(try await API.shared.manga(id, refresh: refresh)) } catch { return .failure(error) }
+        }.value
+        switch result {
+        case .success(let d): manga = d.manga; chapters = d.chapters; error = ""
+        case .failure(let e): if !isCancellation(e) { error = e.localizedDescription }
+        }
         loading = false
+    }
+}
+
+/// Centered icon-over-text label for the equal-width action buttons.
+struct ActionLabel: View {
+    let icon: String; let text: String; let tint: Color
+    var body: some View {
+        VStack(spacing: 4) { Image(systemName: icon).font(.title3); Text(text).font(.caption2).lineLimit(1).minimumScaleFactor(0.8) }
+            .foregroundStyle(tint).frame(maxWidth: .infinity).padding(.vertical, 4)
     }
 }
 
@@ -184,13 +272,14 @@ struct MangaCategoriesSheet: View {
     }
 }
 
-// MARK: - Reader (server pages or device pages)
+// MARK: - Reader (streams pages from the server; uses the phone copy when there is one)
 
 struct ReaderView: View {
     @EnvironmentObject var api: API
     @EnvironmentObject var device: DeviceStore
     @Environment(\.dismiss) var dismiss
     let target: ReaderTarget
+    @State private var chapters: [Chapter] = []
     @State private var pages: [URL] = []
     @State private var page = 0
     @State private var error = ""
@@ -200,7 +289,7 @@ struct ReaderView: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var current: Int = 0
 
-    var ordered: [Chapter] { target.chapters.sorted { $0.sourceOrder > $1.sourceOrder } }   // reading order
+    var ordered: [Chapter] { chapters.sorted { $0.sourceOrder > $1.sourceOrder } }   // reading order
     var idx: Int { ordered.firstIndex { $0.id == current } ?? 0 }
     var chapter: Chapter? { ordered.indices.contains(idx) ? ordered[idx] : nil }
     var prev: Chapter? { idx > 0 ? ordered[idx - 1] : nil }
@@ -209,15 +298,14 @@ struct ReaderView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if !error.isEmpty { VStack { Text(error).foregroundStyle(.red).padding(); Button("Back") { dismiss() } } }
+            if !error.isEmpty { VStack(spacing: 12) { Text(error).foregroundStyle(.red).multilineTextAlignment(.center).padding(); Button("Try again") { Task { await loadPages() } }.buttonStyle(.borderedProminent); Button("Back") { dismiss() } } }
             else if pages.isEmpty { ProgressView().tint(.white) }
             else if mode == "webtoon" { webtoon }
             else { paged }
             if hud { hudView }
         }
         .navigationBarHidden(true).statusBarHidden(!hud).toolbar(.hidden, for: .tabBar)
-        .task(id: current) { await loadPages() }
-        .onAppear { current = target.chapterId }
+        .task { chapters = target.chapters; current = target.chapterId; await loadPages() }
         .onDisappear { saveTask?.cancel(); Task { await save(final: false) } }
     }
 
@@ -239,7 +327,7 @@ struct ReaderView: View {
     var paged: some View {
         TabView(selection: $page) {
             ForEach(Array(pages.enumerated()), id: \.offset) { i, u in
-                ZoomableImage(url: u).tag(mode == "pagedRTL" ? pages.count - 1 - i : i)
+                ZoomableImage(url: u).tag(i)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
@@ -275,7 +363,7 @@ struct ReaderView: View {
             }.padding().background(.black.opacity(0.75)).foregroundStyle(.white)
         }.ignoresSafeArea()
     }
-    func go(_ c: Chapter) { Task { await save(final: false) }; page = 0; pages = []; current = c.id }
+    func go(_ c: Chapter) { Task { await save(final: false); page = 0; pages = []; current = c.id; await loadPages() } }
     func touched() {
         saveTask?.cancel()
         let final = page >= pages.count - 1
@@ -283,15 +371,28 @@ struct ReaderView: View {
     }
     func save(final: Bool) async {
         guard let c = chapter, !pages.isEmpty else { return }
-        try? await api.markRead([c.id], read: final ? true : nil, lastPage: page)
+        let id = c.id, p = page
+        _ = await Task.detached { try? await API.shared.markRead([id], read: final ? true : nil, lastPage: p) }.value
     }
     func loadPages() async {
-        guard let c = chapter else { return }
-        pages = []; error = ""
+        error = ""; pages = []
+        let mid = target.manga.id
+        if chapters.isEmpty {   // opened from Updates/History: fetch the chapter list first
+            let r = await Task.detached { () -> [Chapter]? in (try? await API.shared.manga(mid, refresh: false))?.chapters }.value
+            chapters = r ?? []
+            if chapters.isEmpty { error = "Could not load the chapter list"; return }
+        }
+        guard let c = chapter else { error = "Chapter not found"; return }
         let local = device.pages(c.id)
         if !local.isEmpty { pages = local }
         else {
-            do { pages = try await api.pages(c.id).compactMap { api.img($0) } } catch { self.error = error.localizedDescription; return }
+            let cid = c.id
+            let r = await Task.detached { () -> Result<[String], Error> in do { return .success(try await API.shared.pages(cid)) } catch { return .failure(error) } }.value
+            switch r {
+            case .success(let p): pages = p.compactMap { api.img($0) }
+            case .failure(let e): if !isCancellation(e) { error = e.localizedDescription }; return
+            }
+            if pages.isEmpty { error = "This chapter has no pages on its source (it may be hosted elsewhere)."; return }
         }
         page = min(c.lastPageRead, max(0, pages.count - 1))
         if c.isRead && page >= pages.count - 1 { page = 0 }

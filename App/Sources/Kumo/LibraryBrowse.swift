@@ -80,12 +80,8 @@ struct LibraryView: View {
 struct ReadingNowCard: View {
     @EnvironmentObject var api: API
     let c: Chapter
-    @State private var target: ReaderTarget?
     var body: some View {
-        Button {
-            guard let m = c.manga else { return }
-            Task { if let d = try? await api.manga(m.id, refresh: false) { target = ReaderTarget(manga: d.manga, chapters: d.chapters, chapterId: c.id) } }
-        } label: {
+        NavigationLink(value: ReaderTarget(manga: Manga(id: c.manga?.id ?? 0, title: c.manga?.title ?? "", thumbnailUrl: c.manga?.thumbnailUrl, inLibrary: true), chapters: [], chapterId: c.id)) {
             VStack(alignment: .leading, spacing: 4) {
                 AsyncImage(url: api.img(c.manga?.thumbnailUrl)) { $0.resizable().scaledToFill() } placeholder: { Color(.secondarySystemBackground) }.frame(width: 120, height: 170).clipShape(RoundedRectangle(cornerRadius: 8))
                 Text(c.manga?.title ?? "").font(.caption.bold()).lineLimit(1)
@@ -93,7 +89,6 @@ struct ReadingNowCard: View {
                 ProgressView(value: c.pageCount > 0 ? Double(min(c.lastPageRead + 1, c.pageCount)) / Double(c.pageCount) : 0).tint(.accentColor)
             }.frame(width: 120)
         }.buttonStyle(.plain)
-        .navigationDestination(item: $target) { ReaderView(target: $0) }
     }
 }
 
@@ -204,7 +199,6 @@ struct SourceView: View {
                 if !loading && items.isEmpty && !error.isEmpty == false { Text("Nothing here.").foregroundStyle(.secondary).padding() }
             }.padding(.vertical, 8)
         }
-        .kumoDestinations()
         .navigationTitle(source.displayName).navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "Search \(source.displayName)")
         .onSubmit(of: .search) { type = "SEARCH"; Task { await load(reset: true) } }

@@ -29,6 +29,13 @@ struct Manga: Decodable, Identifiable, Hashable {
     func hash(into h: inout Hasher) { h.combine(id) }
 }
 
+extension Manga {
+    /// Minimal manga for navigation from a chapter reference (Updates / History / Reading now).
+    init(id: Int, title: String, thumbnailUrl: String?, inLibrary: Bool) {
+        self.id = id; self.title = title; self.thumbnailUrl = thumbnailUrl; self.inLibrary = inLibrary
+    }
+}
+
 struct Chapter: Decodable, Identifiable, Hashable {
     var id: Int
     var name: String

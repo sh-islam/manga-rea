@@ -40,7 +40,7 @@ struct HistoryView: View {
             if list.isEmpty { Text("Nothing read yet.").foregroundStyle(.secondary) }
             ForEach(list) { c in ChapterRow(c: c, sub: [c.name, fmtDate(c.lastReadAt), c.isRead ? nil : "page \(c.lastPageRead + 1)"].compactMap { $0 }.joined(separator: " · ")) }
         }
-        .kumoDestinations().navigationTitle("History").task { do { list = try await api.history() } catch { self.error = error.localizedDescription } }
+        .navigationTitle("History").task { do { list = try await api.history() } catch { self.error = error.localizedDescription } }
     }
 }
 
@@ -49,21 +49,14 @@ struct ChapterRow: View {
     @EnvironmentObject var api: API
     let c: Chapter
     var sub: String? = nil
-    @State private var target: ReaderTarget?
-    @State private var busy = false
     var body: some View {
-        Button {
-            guard let m = c.manga else { return }
-            busy = true
-            Task { if let d = try? await api.manga(m.id, refresh: false) { target = ReaderTarget(manga: d.manga, chapters: d.chapters, chapterId: c.id) }; busy = false }
-        } label: {
+        NavigationLink(value: ReaderTarget(manga: Manga(id: c.manga?.id ?? 0, title: c.manga?.title ?? "", thumbnailUrl: c.manga?.thumbnailUrl, inLibrary: true), chapters: [], chapterId: c.id)) {
             HStack {
                 AsyncImage(url: api.img(c.manga?.thumbnailUrl)) { $0.resizable().scaledToFill() } placeholder: { Color(.secondarySystemBackground) }.frame(width: 44, height: 62).clipShape(RoundedRectangle(cornerRadius: 6))
                 VStack(alignment: .leading) { Text(c.manga?.title ?? "").lineLimit(1); Text(sub ?? c.name + (c.isDownloaded ? " · on server" : "")).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                Spacer(); if busy { ProgressView() }
+                Spacer()
             }.foregroundStyle(c.isRead ? .secondary : .primary)
         }
-        .navigationDestination(item: $target) { ReaderView(target: $0) }
     }
 }
 
@@ -195,7 +188,7 @@ struct DeviceFilesView: View {
             }
             Button { importing = true } label: { Label("Import CBZ/ZIP…", systemImage: "square.and.arrow.down") }
         }
-        .kumoDestinations().navigationTitle("On this device")
+        .navigationTitle("On this device")
         .onAppear { books = device.localBooks() }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.zip, UTType(filenameExtension: "cbz") ?? .zip, .data], allowsMultipleSelection: true) { r in
             guard case .success(let urls) = r else { return }
