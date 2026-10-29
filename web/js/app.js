@@ -5,7 +5,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
   const toast = (m, ms = 2200) => { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms); };
-  const date = (ms) => { const n = Number(ms); if (!n) return ''; const d = new Date(n); const diff = (Date.now() - n) / 864e5; return diff < 1 ? 'today' : diff < 2 ? 'yesterday' : diff < 7 ? Math.floor(diff) + ' days ago' : d.toLocaleDateString(); };
+  const date = (ms) => { let n = Number(ms); if (!n) return ''; if (n < 1e11) n *= 1000; const d = new Date(n); const diff = (Date.now() - n) / 864e5; return diff < 1 ? 'today' : diff < 2 ? 'yesterday' : diff < 7 ? Math.floor(diff) + ' days ago' : d.toLocaleDateString(); };
   const bytes = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(0) + ' KB' : n < 1073741824 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1073741824).toFixed(2) + ' GB';
   const busy = (msg) => { view.innerHTML = `<p class="muted">${esc(msg || 'Loading…')}</p>`; };
   const fail = (e) => { console.error(e); view.innerHTML = `<div class="card"><b>Error</b><div class="muted">${esc(e.message || e)}</div><p><a href="#/settings">Settings</a></p></div>`; };
@@ -65,13 +65,13 @@
   }
 
   // ---------------- browse (sources + global search)
-  const visibleSources = (srcs) => srcs.filter(s => (cfg.nsfw() || !s.isNsfw) && (cfg.langs().includes(s.lang) || s.lang === 'localsourcelang' || cfg.langs().includes('*')));
+  const visibleSources = (srcs) => srcs.filter(s => (cfg.nsfw() || s.contentWarning !== 'NSFW') && (cfg.langs().includes(s.lang) || s.lang === 'localsourcelang' || cfg.langs().includes('*')));
   async function browseView() {
     nav('browse'); busy();
     const srcs = visibleSources(await q.sources());
     view.innerHTML = `<h1>Browse</h1><form class="row" id="gs"><input id="gq" placeholder="Search every source…" style="flex:1;min-width:160px" value="${esc(sessionStorage.getItem('gs.q') || '')}"><button class="primary">Search</button></form>
       <div id="gres"></div><h2>Sources <span class="muted small">(${srcs.length}; languages in <a href="#/settings">Settings</a>)</span></h2><div class="list" id="sl"></div>`;
-    view.querySelector('#sl').innerHTML = srcs.map(s => `<a class="it" href="#/source/${s.id}"><img class="thumb" style="height:46px;width:46px" src="${esc(img(s.iconUrl))}" alt=""><div class="m"><div>${esc(s.displayName)}</div><div class="muted small">${esc(s.lang)}${s.isNsfw ? ' · 18+' : ''}</div></div><span class="muted">›</span></a>`).join('') || '<p class="muted">No sources. Install extensions first.</p>';
+    view.querySelector('#sl').innerHTML = srcs.map(s => `<a class="it" href="#/source/${s.id}"><img class="thumb" style="height:46px;width:46px" src="${esc(img(s.iconUrl))}" alt=""><div class="m"><div>${esc(s.displayName)}</div><div class="muted small">${s.lang === 'localsourcelang' ? 'files on the server (local/)' : esc(s.lang)}${s.contentWarning === 'NSFW' ? ' · 18+' : s.contentWarning === 'MIXED' ? ' · may contain 18+' : ''}</div></div><span class="muted">›</span></a>`).join('') || '<p class="muted">No sources. Install extensions first.</p>';
     const run = async (query) => {
       if (!query) return; sessionStorage.setItem('gs.q', query);
       const box = view.querySelector('#gres'); box.innerHTML = '<p class="muted">Searching all sources…</p>';
@@ -118,11 +118,11 @@
       const n = esc(f.name); const t = f.__typename; const key = parentPos == null ? `${i}` : `${parentPos}.${i}`;
       if (t === 'HeaderFilter') return `<h3>${n}</h3>`;
       if (t === 'SeparatorFilter') return '<hr>';
-      if (t === 'CheckBoxFilter') return `<label><input type="checkbox" data-k="${key}" data-t="cb" ${f.default ? 'checked' : ''}>${n}</label>`;
-      if (t === 'TriStateFilter') return `<label>${n} <select data-k="${key}" data-t="tri"><option value="IGNORE">—</option><option value="INCLUDE">include</option><option value="EXCLUDE">exclude</option></select></label>`;
-      if (t === 'SelectFilter') return `<label>${n} <select data-k="${key}" data-t="sel">${f.values.map((v, j) => `<option value="${j}" ${j === f.default ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`;
-      if (t === 'TextFilter') return `<label>${n} <input data-k="${key}" data-t="txt" value="${esc(f.default)}"></label>`;
-      if (t === 'SortFilter') return `<label>${n} <select data-k="${key}" data-t="sort">${f.values.map((v, j) => `<option value="${j}" ${f.default && j === f.default.index ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select><select data-k="${key}" data-t="sortdir"><option value="1">↑</option><option value="0" ${f.default && !f.default.ascending ? 'selected' : ''}>↓</option></select></label>`;
+      if (t === 'CheckBoxFilter') return `<label><input type="checkbox" data-k="${key}" data-t="cb" ${f.cbDefault ? 'checked' : ''}>${n}</label>`;
+      if (t === 'TriStateFilter') return `<label>${n} <select data-k="${key}" data-t="tri"><option value="IGNORE" ${f.triDefault === 'IGNORE' ? 'selected' : ''}>—</option><option value="INCLUDE" ${f.triDefault === 'INCLUDE' ? 'selected' : ''}>include</option><option value="EXCLUDE" ${f.triDefault === 'EXCLUDE' ? 'selected' : ''}>exclude</option></select></label>`;
+      if (t === 'SelectFilter') return `<label>${n} <select data-k="${key}" data-t="sel">${f.values.map((v, j) => `<option value="${j}" ${j === f.selDefault ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`;
+      if (t === 'TextFilter') return `<label>${n} <input data-k="${key}" data-t="txt" value="${esc(f.textDefault)}"></label>`;
+      if (t === 'SortFilter') return `<label>${n} <select data-k="${key}" data-t="sort">${f.values.map((v, j) => `<option value="${j}" ${f.sortDefault && j === f.sortDefault.index ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select><select data-k="${key}" data-t="sortdir"><option value="1">↑</option><option value="0" ${f.sortDefault && !f.sortDefault.ascending ? 'selected' : ''}>↓</option></select></label>`;
       if (t === 'GroupFilter') return `<details><summary>${n}</summary>${f.filters.map((g, j) => row(g, j, i)).join('')}</details>`;
       return '';
     };
@@ -337,10 +337,10 @@
     const render = () => {
       view.querySelectorAll('.chip[data-t]').forEach(c => c.classList.toggle('on', c.dataset.t === st.tab));
       let l = exts.filter(e => st.tab === 'installed' ? e.isInstalled : st.tab === 'updates' ? e.hasUpdate : !e.isInstalled);
-      if (st.tab !== 'installed') l = l.filter(e => (cfg.nsfw() || !e.isNsfw) && (on.has('*') || on.has(e.lang)));
+      if (st.tab !== 'installed') l = l.filter(e => (cfg.nsfw() || e.contentWarning !== 'NSFW') && (on.has('*') || on.has(e.lang)));
       if (st.q) l = l.filter(e => (e.name + ' ' + e.pkgName).toLowerCase().includes(st.q));
       l.sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
-      list.innerHTML = l.slice(0, 400).map(e => `<div class="it"><img class="thumb" style="height:40px;width:40px" loading="lazy" src="${esc(img(e.iconUrl))}" alt=""><div class="m"><div>${esc(e.name)} <span class="muted small">${esc(e.versionName)}${e.isNsfw ? ' · 18+' : ''}${e.isObsolete ? ' · obsolete' : ''}</span></div><div class="muted small">${esc(e.lang)} · ${esc(e.pkgName)}</div></div>
+      list.innerHTML = l.slice(0, 400).map(e => `<div class="it"><img class="thumb" style="height:40px;width:40px" loading="lazy" src="${esc(img(e.iconUrl))}" alt=""><div class="m"><div>${esc(e.name)} <span class="muted small">${esc(e.versionName)}${e.contentWarning === 'NSFW' ? ' · 18+' : e.contentWarning === 'MIXED' ? ' · mixed' : ''}${e.isObsolete ? ' · obsolete' : ''}</span></div><div class="muted small">${esc(e.lang)} · ${esc(e.pkgName)}</div></div>
         ${e.hasUpdate ? `<button class="primary" data-up="${esc(e.pkgName)}">Update</button>` : ''}${e.isInstalled ? `<button data-un="${esc(e.pkgName)}">Uninstall</button>` : `<button class="primary" data-in="${esc(e.pkgName)}">Install</button>`}</div>`).join('') || '<p class="muted">Nothing matches.</p>';
       if (l.length > 400) list.append(el(`<p class="muted small">${l.length - 400} more — narrow the filter.</p>`));
     };
