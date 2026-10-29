@@ -255,7 +255,7 @@ final class API: ObservableObject {
         let r: R = try await gql("query($id:Int!){ manga(id:$id) { inLibrary } }", ["id": mangaId])
         if !r.manga.inLibrary { try await setLibrary(mangaId, true) }
     }
-    func download(_ ids: [Int], mangaId: Int? = nil) async throws { if let m = mangaId { try await ensureLibrary(m) }; let _: Ok = try await gql("mutation($ids:[Int!]!){ enqueueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }", ["ids": ids]) }
+    func download(_ ids: [Int], mangaId: Int? = nil) async throws { if let m = mangaId { try await ensureLibrary(m) }; let _: Ok = try await gql("mutation($ids:[Int!]!){ enqueueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }", ["ids": ids]); try? await downloader(start: true) }
     func deleteDownloads(_ ids: [Int]) async throws { let _: Ok = try await gql("mutation($ids:[Int!]!){ deleteDownloadedChapters(input:{ids:$ids}) { chapters { id } } }", ["ids": ids]) }
     func dequeue(_ ids: [Int]) async throws { let _: Ok = try await gql("mutation($ids:[Int!]!){ dequeueChapterDownloads(input:{ids:$ids}) { downloadStatus { state } } }", ["ids": ids]) }
     func downloadStatus() async throws -> DownloadStatus {

@@ -57,8 +57,9 @@ final class DeviceStore: ObservableObject {
     func removeManga(_ mangaId: Int) { for c in chapters.values where c.mangaId == mangaId { remove(c.chapterId) } }
 
     private func run() {
-        guard !running, let job = queue.first else { return }
+        guard !running, let job = queue.first else { BackgroundKeepAlive.shared.stop(); return }
         running = true
+        BackgroundKeepAlive.shared.start()
         Task {
             do {
                 let api = API.shared
