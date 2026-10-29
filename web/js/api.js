@@ -2,6 +2,8 @@
 // Static site, no build step. Settings (server URL, tokens) live in localStorage.
 const Kumo = (() => {
   const LS = window.localStorage;
+  // migrate addresses saved under the old /kumo path
+  for (const k of ['kumo.api', 'kumo.files']) { const v = LS.getItem(k); if (v && v.includes('/kumo')) LS.setItem(k, v.replace('/kumo', '/manga')); }
   const cfg = {
     // default backend: when this page is served by the server itself (…/kumo/app/), talk to that same origin;
     // on GitHub Pages use the public Funnel address.
@@ -24,6 +26,7 @@ const Kumo = (() => {
       body: JSON.stringify({ query, variables: variables || {} }),
     });
     if (r.status === 401) throw Object.assign(new Error('unauthorized'), { code: 401 });
+    if (!r.ok) throw new Error('Server answered ' + r.status + ' at ' + cfg.api + ' (check the address in Settings)');
     const d = await r.json();
     if (d.errors && d.errors.length) throw new Error(d.errors.map(e => e.message.split('\n')[0]).join('; '));
     return d.data;
