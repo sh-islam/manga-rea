@@ -151,6 +151,7 @@ struct CategoriesSheet: View {
 
 struct BrowseView: View {
     @EnvironmentObject var api: API
+    @EnvironmentObject var device: DeviceStore
     @State private var sources: [Source] = []
     @State private var query = ""
     @State private var results: [(Source, [Manga])] = []
@@ -162,7 +163,7 @@ struct BrowseView: View {
             ForEach(results, id: \.0.id) { (src, mangas) in
                 Section(src.displayName) {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) { ForEach(mangas.prefix(10)) { m in NavigationLink(value: m) { Cover(manga: m).frame(width: 100) }.buttonStyle(.plain) } }
+                        HStack(spacing: 8) { ForEach(mangas.prefix(10)) { m in NavigationLink(value: m) { Cover(manga: m, badgeUnread: m.unreadCount, badgeDevice: device.mangaCount(m.id)).frame(width: 100) }.buttonStyle(.plain) } }
                     }.listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
                 }
             }
@@ -185,6 +186,12 @@ struct BrowseView: View {
         .onSubmit(of: .search) { Task { await search() } }
         .task { await load() }
         .refreshable { await load() }
+        .onAppear { Task { await refreshStates() } }
+    }
+    func refreshStates() async {
+        let ids = results.flatMap { $0.1.map { $0.id } }
+        guard let st = try? await api.states(ids) else { return }
+        results = results.map { (s, ms) in (s, ms.map { var m = $0; if let x = st[m.id] { m.inLibrary = x.inLibrary; m.downloadCount = x.downloadCount; m.unreadCount = x.unreadCount }; return m }) }
     }
     func load() async { do { sources = try await withRetry { try await api.sources() }; error = "" } catch { if !isCancellation(error) { self.error = "Server not ready: " + error.localizedDescription + " — pull down to retry" } } }
     func search() async {
@@ -203,6 +210,7 @@ struct BrowseView: View {
 
 struct SourceView: View {
     @EnvironmentObject var api: API
+    @EnvironmentObject var device: DeviceStore
     let source: Source
     @State private var type = "POPULAR"
     @State private var query = ""
@@ -222,7 +230,7 @@ struct SourceView: View {
                     if !(detail?.filters.isEmpty ?? true) { Button { showFilters = true } label: { Image(systemName: filters == nil ? "slider.horizontal.3" : "slider.horizontal.3").foregroundStyle(filters == nil ? Color.primary : Color.accentColor) } }
                 }.padding(.horizontal, 12)
                 if !error.isEmpty { ErrorBanner(text: error) }
-                MangaGrid(mangas: items) { if more && !loading { page += 1; Task { await load(reset: false) } } }
+                MangaGrid(mangas: items, device: device) { if more && !loading { page += 1; Task { await load(reset: false) } } }
                 if loading { ProgressView().padding() }
                 if !loading && items.isEmpty && !error.isEmpty == false { Text("Nothing here.").foregroundStyle(.secondary).padding() }
             }.padding(.vertical, 8)
@@ -232,6 +240,7 @@ struct SourceView: View {
         .onSubmit(of: .search) { type = "SEARCH"; Task { await load(reset: true) } }
         .onChange(of: type) { _, _ in Task { await load(reset: true) } }
         .task { type = source.supportsLatest ? "LATEST" : "POPULAR"; detail = try? await api.source(source.id); if items.isEmpty { await load(reset: true) } }
+        .onAppear { if !items.isEmpty { Task { if let st = try? await api.states(items.map { $0.id }) { items = items.map { var m = $0; if let x = st[m.id] { m.inLibrary = x.inLibrary; m.downloadCount = x.downloadCount; m.unreadCount = x.unreadCount }; return m } } } } }
         .sheet(isPresented: $showFilters) { if let d = detail { FilterSheet(filters: d.filters) { f in filters = f; type = "SEARCH"; Task { await load(reset: true) } } } }
     }
     func load(reset: Bool) async {

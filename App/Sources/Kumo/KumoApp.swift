@@ -84,19 +84,22 @@ struct Cover: View {
             LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .center, endPoint: .bottom)
             Text(manga.title).font(.caption.bold()).foregroundStyle(.white).lineLimit(2).padding(7).shadow(radius: 2)
             HStack(spacing: 3) {
-                if let u = badgeUnread, u > 0 { Badge(text: "\(u)", color: .accentColor) }
-                if let d = manga.downloadCount, d > 0 { Badge(text: "\(d)", color: .green) }
-                if let d = badgeDevice, d > 0 { Badge(text: "📱\(d)", color: .orange) }
+                if let u = badgeUnread, u > 0 { Badge(text: "\(u)", icon: nil, color: .accentColor) }
+                if let d = manga.downloadCount, d > 0 { Badge(text: "\(d)", icon: "icloud.fill", color: Color(red: 0.2, green: 0.6, blue: 0.35)) }
+                if let d = badgeDevice, d > 0 { Badge(text: "\(d)", icon: "iphone", color: .orange) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(5)
-            if manga.inLibrary { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).background(Circle().fill(.black)).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(5) }
+            if manga.inLibrary { Image(systemName: "heart.fill").font(.caption).foregroundStyle(.pink).padding(4).background(Circle().fill(.black.opacity(0.7))).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(5) }
         }
         .aspectRatio(2 / 3, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 struct Badge: View {
-    let text: String; let color: Color
-    var body: some View { Text(text).font(.caption2.bold()).foregroundStyle(.white).padding(.horizontal, 5).padding(.vertical, 2).background(color, in: RoundedRectangle(cornerRadius: 5)) }
+    let text: String; var icon: String? = nil; let color: Color
+    var body: some View {
+        HStack(spacing: 2) { if let i = icon { Image(systemName: i).font(.system(size: 9, weight: .bold)) }; Text(text).font(.caption2.bold()) }
+            .foregroundStyle(.white).padding(.horizontal, 5).padding(.vertical, 2).background(color, in: RoundedRectangle(cornerRadius: 5))
+    }
 }
 
 struct MangaGrid: View {

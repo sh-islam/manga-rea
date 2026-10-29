@@ -205,6 +205,14 @@ final class API: ObservableObject {
         let r: R = try await gql("query($f:MangaFilterInput){ mangas(filter:$f, order:[{by:TITLE}]) { nodes { \(API.MANGA) categories { nodes { id name } } } } }", ["f": ["inLibrary": ["equalTo": true]]])
         return r.mangas.nodes
     }
+    struct MangaState: Decodable { var id: Int; var inLibrary: Bool; var downloadCount: Int?; var unreadCount: Int? }
+    /// Current library / server-download state for some manga (after coming back from a manga page).
+    func states(_ ids: [Int]) async throws -> [Int: MangaState] {
+        guard !ids.isEmpty else { return [:] }
+        struct R: Decodable { var mangas: Nodes<MangaState> }
+        let r: R = try await gql("query($ids:[Int!]!){ mangas(filter:{id:{in:$ids}}) { nodes { id inLibrary downloadCount unreadCount } } }", ["ids": ids])
+        return Dictionary(uniqueKeysWithValues: r.mangas.nodes.map { ($0.id, $0) })
+    }
     func categories() async throws -> [Category] {
         struct R: Decodable { var categories: Nodes<Category> }
         let r: R = try await gql("{ categories(order:[{by:ORDER}]) { nodes { id name order default mangas { totalCount } } } }")
